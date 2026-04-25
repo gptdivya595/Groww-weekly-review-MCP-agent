@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import queue
 import shlex
+import shutil
 import subprocess
 import threading
 from collections.abc import Sequence
@@ -85,8 +87,9 @@ class StdioJsonRpcTransport:
         self._pending_responses = {}
         self._stderr_lines = []
 
+        command = normalize_command_for_runtime(self.command)
         process = subprocess.Popen(
-            [self.command, *self.args],
+            [command, *self.args],
             cwd=self.cwd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -476,6 +479,22 @@ def parse_command_args(raw_args: str) -> list[str]:
             raise ValueError("docs_mcp_args JSON must be a list of strings.")
         return list(parsed)
     return shlex.split(stripped, posix=False)
+
+
+def normalize_command_for_runtime(command: str) -> str:
+    normalized = command.strip()
+    if not normalized or os.name == "nt":
+        return normalized
+    if shutil.which(normalized) is not None:
+        return normalized
+
+    lowered = normalized.lower()
+    for suffix in (".cmd", ".bat", ".exe"):
+        if lowered.endswith(suffix):
+            candidate = normalized[: -len(suffix)]
+            if candidate and shutil.which(candidate) is not None:
+                return candidate
+    return normalized
 
 
 def _extract_tool_error_message(result: dict[str, Any]) -> str:

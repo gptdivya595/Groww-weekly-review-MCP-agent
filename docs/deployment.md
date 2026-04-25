@@ -146,6 +146,8 @@ After deploy, the dashboard should load and show:
 - Vercel was pointed at the repo root instead of `frontend`.
 - `NEXT_PUBLIC_API_BASE_URL` still points to localhost.
 - `PULSE_API_CORS_ORIGINS` does not include the final Vercel domain.
+- Railway MCP command vars were copied from Windows as `npx.cmd` instead of
+  Linux-safe `npx`.
 - Google MCP auth was completed locally instead of inside the persisted Railway
   runtime.
 - `products.yaml` still contains placeholder data for docs or recipients.

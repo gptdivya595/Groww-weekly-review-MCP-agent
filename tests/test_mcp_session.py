@@ -4,7 +4,8 @@ import sys
 import threading
 import time
 
-from agent.mcp_client.session import _STREAM_CLOSED, StdioJsonRpcTransport
+from agent.mcp_client import session
+from agent.mcp_client.session import _STREAM_CLOSED, StdioJsonRpcTransport, normalize_command_for_runtime
 
 
 def test_close_does_not_raise_thread_exceptions(monkeypatch) -> None:
@@ -97,3 +98,22 @@ sys.stdout.flush()
         "serverInfo": {"name": "jsonl-server", "version": "1.0.0"},
     }
     transport.close()
+
+
+def test_normalize_command_for_runtime_rewrites_windows_npx_on_posix(monkeypatch) -> None:
+    monkeypatch.setattr(session.os, "name", "posix", raising=False)
+    monkeypatch.setattr(
+        session.shutil,
+        "which",
+        lambda command: f"/usr/bin/{command}" if command == "npx" else None,
+    )
+
+    assert normalize_command_for_runtime("npx.cmd") == "npx"
+
+
+def test_normalize_command_for_runtime_preserves_windows_command_on_windows(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(session.os, "name", "nt", raising=False)
+
+    assert normalize_command_for_runtime("npx.cmd") == "npx.cmd"
