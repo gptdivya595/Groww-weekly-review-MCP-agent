@@ -149,3 +149,28 @@ After deploy, the dashboard should load and show:
 - Google MCP auth was completed locally instead of inside the persisted Railway
   runtime.
 - `products.yaml` still contains placeholder data for docs or recipients.
+
+## 6. Vercel Error: No FastAPI Entrypoint Found
+
+If Vercel shows an error like:
+
+```text
+No fastapi entrypoint found. Add an 'app' script in pyproject.toml ...
+```
+
+that means Vercel is trying to deploy the repository root as a Python project
+because it found the root `pyproject.toml`.
+
+This repository should not be deployed to Vercel from the root.
+
+Fix it this way:
+
+1. Open the Vercel project.
+2. Go to `Settings` -> `Build and Deployment`.
+3. Edit `Root Directory`.
+4. Set it to `frontend`.
+5. Redeploy.
+
+If you already created the wrong Vercel project, the simplest option is often
+to delete that project and import the same GitHub repository again with Root
+Directory set to `frontend` during setup.
