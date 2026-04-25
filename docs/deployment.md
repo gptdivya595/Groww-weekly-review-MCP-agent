@@ -58,10 +58,25 @@ The Docker image already sets stable defaults for:
 - `PULSE_LOCKS_DIR`
 - `PULSE_DOCS_MCP_COMMAND`
 - `PULSE_DOCS_MCP_ARGS`
+- `PULSE_DOCS_MCP_MESSAGE_MODE`
+- `PULSE_DOCS_MCP_TOOL_GET_DOCUMENT`
+- `PULSE_DOCS_MCP_TOOL_CREATE_DOCUMENT`
+- `PULSE_DOCS_MCP_TOOL_APPEND_SECTION`
 - `PULSE_GMAIL_MCP_COMMAND`
 - `PULSE_GMAIL_MCP_ARGS`
+- `PULSE_GMAIL_MCP_MESSAGE_MODE`
+- `PULSE_GMAIL_MCP_TOOL_CREATE_DRAFT`
+- `PULSE_GMAIL_MCP_TOOL_UPDATE_DRAFT`
+- `PULSE_GMAIL_MCP_TOOL_SEND_DRAFT`
 - `GOOGLE_MCP_PROFILE`
 - safe initial scheduler and send settings
+
+Important:
+
+- the Railway image now preinstalls `@a-bonus/google-docs-mcp`
+- the backend defaults use the `google-docs-mcp` binary directly in production
+- do not override Railway back to `npx` or `npx.cmd` unless you have a strong
+  reason and understand the startup tradeoffs
 
 You still need to set these in Railway:
 
@@ -80,9 +95,19 @@ Recommended first-run settings:
 After the first successful Railway deploy:
 
 1. Open a shell inside the Railway backend service.
-2. Run the Google MCP auth flow in that runtime.
+2. Run the Google MCP auth flow in that runtime:
+
+```text
+google-docs-mcp auth
+```
+
 3. Confirm the auth files are stored under the persisted `/app/data/home`
    paths.
+4. For the default profile, you should see a token path like:
+
+```text
+/app/data/home/.config/google-docs-mcp/pulse/token.json
+```
 
 Because the backend launches Docs and Gmail MCP tools over stdio, the backend
 container itself must be able to execute the MCP commands and reuse the saved
@@ -148,6 +173,8 @@ After deploy, the dashboard should load and show:
 - `PULSE_API_CORS_ORIGINS` does not include the final Vercel domain.
 - Railway MCP command vars were copied from Windows as `npx.cmd` instead of
   Linux-safe `npx`.
+- Railway never completed `google-docs-mcp auth`, so the deployed runtime has
+  no saved token under `/app/data/home/.config/google-docs-mcp/.../token.json`.
 - Google MCP auth was completed locally instead of inside the persisted Railway
   runtime.
 - `products.yaml` still contains placeholder data for docs or recipients.

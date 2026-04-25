@@ -60,3 +60,51 @@ def test_overview_exposes_dashboard_control_tower_fields(
     assert payload["scheduler"]["enabled"] is True
     assert any(service["key"] == "api_backend" for service in payload["services"])
     assert isinstance(payload["issues"], list)
+
+
+def test_services_report_missing_google_mcp_token_before_launching_probe(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    products_path = tmp_path / "products.yaml"
+    products_path.write_text(
+        """
+- slug: groww
+  display_name: Groww
+  app_store_app_id: "1404871703"
+  google_play_package: "com.nextbillion.groww"
+  google_doc_id: null
+  stakeholder_emails:
+    - ops@example.com
+  default_lookback_weeks: 10
+  country: in
+  lang: en
+  active: true
+        """.strip(),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("PULSE_DB_PATH", str(tmp_path / "pulse.sqlite"))
+    monkeypatch.setenv("PULSE_PRODUCTS_FILE", str(products_path))
+    monkeypatch.setenv("PULSE_RAW_DATA_DIR", str(tmp_path / "raw"))
+    monkeypatch.setenv("PULSE_EMBEDDING_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setenv("PULSE_ARTIFACTS_DIR", str(tmp_path / "artifacts"))
+    monkeypatch.setenv("PULSE_LOCKS_DIR", str(tmp_path / "locks"))
+    monkeypatch.setenv("PULSE_DOCS_MCP_COMMAND", "google-docs-mcp")
+    monkeypatch.setenv("PULSE_GMAIL_MCP_COMMAND", "google-docs-mcp")
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "test-client-id")
+    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "test-client-secret")
+    monkeypatch.setenv("GOOGLE_MCP_PROFILE", "pulse")
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+
+    app = create_app()
+    with TestClient(app) as client:
+        response = client.get("/api/services")
+
+    assert response.status_code == 200
+    services = {service["key"]: service for service in response.json()}
+    assert services["docs_mcp"]["status"] == "failed"
+    assert "Google MCP auth token not found" in services["docs_mcp"]["detail"]
+    assert services["gmail_mcp"]["status"] == "failed"
+    assert "Google MCP auth token not found" in services["gmail_mcp"]["detail"]

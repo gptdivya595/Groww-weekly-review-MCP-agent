@@ -19,12 +19,20 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PULSE_SCHEDULER_ISO_WEEKDAY=1 \
     PULSE_SCHEDULER_HOUR=9 \
     PULSE_SCHEDULER_MINUTE=0 \
-    PULSE_DOCS_MCP_COMMAND=npx \
-    PULSE_DOCS_MCP_ARGS=["-y","@a-bonus/google-docs-mcp"] \
+    PULSE_DOCS_MCP_COMMAND=google-docs-mcp \
+    PULSE_DOCS_MCP_ARGS= \
     PULSE_DOCS_MCP_TIMEOUT_SECONDS=40 \
-    PULSE_GMAIL_MCP_COMMAND=npx \
-    PULSE_GMAIL_MCP_ARGS=["-y","@a-bonus/google-docs-mcp"] \
+    PULSE_DOCS_MCP_MESSAGE_MODE=jsonl \
+    PULSE_DOCS_MCP_TOOL_GET_DOCUMENT=readDocument \
+    PULSE_DOCS_MCP_TOOL_CREATE_DOCUMENT=createDocument \
+    PULSE_DOCS_MCP_TOOL_APPEND_SECTION=appendMarkdown \
+    PULSE_GMAIL_MCP_COMMAND=google-docs-mcp \
+    PULSE_GMAIL_MCP_ARGS= \
     PULSE_GMAIL_MCP_TIMEOUT_SECONDS=40 \
+    PULSE_GMAIL_MCP_MESSAGE_MODE=jsonl \
+    PULSE_GMAIL_MCP_TOOL_CREATE_DRAFT=createDraft \
+    PULSE_GMAIL_MCP_TOOL_UPDATE_DRAFT=updateDraft \
+    PULSE_GMAIL_MCP_TOOL_SEND_DRAFT=sendDraft \
     GOOGLE_MCP_PROFILE=pulse
 
 WORKDIR /app
@@ -38,6 +46,7 @@ RUN apt-get update \
     > /etc/apt/sources.list.d/nodesource.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends nodejs \
+    && npm install -g @a-bonus/google-docs-mcp@1.8.0 \
     && python -m pip install --no-cache-dir uv \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*

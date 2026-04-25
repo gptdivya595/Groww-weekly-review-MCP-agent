@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from collections.abc import AsyncIterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, suppress
@@ -1115,6 +1116,20 @@ class ApiRuntime:
                 checked_at=checked_at,
                 active=False,
             )
+        auth_issue = _google_docs_mcp_auth_issue(
+            command=self.settings.docs_mcp_command,
+            raw_args=self.settings.docs_mcp_args,
+        )
+        if auth_issue is not None:
+            return ApiServiceStatus(
+                key="docs_mcp",
+                label="Docs MCP",
+                category="mcp",
+                status="failed",
+                detail=auth_issue,
+                checked_at=checked_at,
+                active=False,
+            )
         return self._probe_mcp_service(
             key="docs_mcp",
             label="Docs MCP",
@@ -1135,6 +1150,20 @@ class ApiRuntime:
                 category="mcp",
                 status="missing",
                 detail="Gmail MCP command is not configured for the backend runtime.",
+                checked_at=checked_at,
+                active=False,
+            )
+        auth_issue = _google_docs_mcp_auth_issue(
+            command=self.settings.gmail_mcp_command,
+            raw_args=self.settings.gmail_mcp_args,
+        )
+        if auth_issue is not None:
+            return ApiServiceStatus(
+                key="gmail_mcp",
+                label="Gmail MCP",
+                category="mcp",
+                status="failed",
+                detail=auth_issue,
                 checked_at=checked_at,
                 active=False,
             )
@@ -1627,6 +1656,58 @@ def _is_identifier_configured(value: str | None) -> bool:
         return False
     cleaned = value.strip().lower()
     return bool(cleaned and not cleaned.startswith("replace"))
+
+
+def _google_docs_mcp_auth_issue(*, command: str | None, raw_args: str) -> str | None:
+    if not _looks_like_google_docs_mcp(command, raw_args):
+        return None
+    if not os.getenv("GOOGLE_CLIENT_ID") or not os.getenv("GOOGLE_CLIENT_SECRET"):
+        return (
+            "Google MCP OAuth client is not configured in the backend runtime. "
+            "Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET."
+        )
+
+    token_path = _google_docs_mcp_token_path()
+    if token_path is None:
+        return (
+            "Google MCP token storage path could not be resolved. Set HOME or "
+            "XDG_CONFIG_HOME in the backend runtime."
+        )
+    if token_path.exists():
+        return None
+    return (
+        "Google MCP auth token not found at "
+        f"{token_path}. Run `google-docs-mcp auth` in the deployed runtime "
+        "with the same GOOGLE_MCP_PROFILE and persistent volume."
+    )
+
+
+def _looks_like_google_docs_mcp(command: str | None, raw_args: str) -> bool:
+    if command is None or not command.strip():
+        return False
+    normalized_command = Path(command).name.strip().lower()
+    if "google-docs-mcp" in normalized_command:
+        return True
+    if normalized_command not in {"npx", "npx.cmd"}:
+        return False
+    return "@a-bonus/google-docs-mcp" in raw_args
+
+
+def _google_docs_mcp_token_path() -> Path | None:
+    xdg_config_home = os.getenv("XDG_CONFIG_HOME")
+    if xdg_config_home:
+        config_dir = Path(xdg_config_home)
+    else:
+        home = os.getenv("HOME")
+        if not home:
+            return None
+        config_dir = Path(home) / ".config"
+
+    profile = os.getenv("GOOGLE_MCP_PROFILE")
+    token_dir = config_dir / "google-docs-mcp"
+    if profile and re.fullmatch(r"[\w-]+", profile):
+        token_dir = token_dir / profile
+    return token_dir / "token.json"
 
 
 def _has_real_stakeholders(emails: list[str]) -> bool:
