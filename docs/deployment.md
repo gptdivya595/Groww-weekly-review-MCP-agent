@@ -94,13 +94,10 @@ Recommended first-run settings:
 
 After the first successful Railway deploy:
 
-1. Open a shell inside the Railway backend service.
-2. Run the Google MCP auth flow in that runtime:
-
-```text
-google-docs-mcp auth
-```
-
+1. Complete the Google MCP auth flow locally on your machine with the same
+   `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_MCP_PROFILE`.
+2. Copy the resulting `token.json` into the Railway volume under the backend
+   runtime's config path.
 3. Confirm the auth files are stored under the persisted `/app/data/home`
    paths.
 4. For the default profile, you should see a token path like:
@@ -108,6 +105,19 @@ google-docs-mcp auth
 ```text
 /app/data/home/.config/google-docs-mcp/pulse/token.json
 ```
+
+If you keep `GOOGLE_MCP_PROFILE=divya`, the expected path becomes:
+
+```text
+/app/data/home/.config/google-docs-mcp/divya/token.json
+```
+
+Why copy instead of re-running auth in Railway:
+
+- `google-docs-mcp auth` uses a localhost browser callback
+- that flow is ideal on your local machine
+- this project's current architecture launches the MCP server over stdio inside
+  Railway, so the practical deployment path is to reuse the saved token file
 
 Because the backend launches Docs and Gmail MCP tools over stdio, the backend
 container itself must be able to execute the MCP commands and reuse the saved
@@ -173,8 +183,8 @@ After deploy, the dashboard should load and show:
 - `PULSE_API_CORS_ORIGINS` does not include the final Vercel domain.
 - Railway MCP command vars were copied from Windows as `npx.cmd` instead of
   Linux-safe `npx`.
-- Railway never completed `google-docs-mcp auth`, so the deployed runtime has
-  no saved token under `/app/data/home/.config/google-docs-mcp/.../token.json`.
+- Railway does not have a saved token under
+  `/app/data/home/.config/google-docs-mcp/.../token.json`.
 - Google MCP auth was completed locally instead of inside the persisted Railway
   runtime.
 - `products.yaml` still contains placeholder data for docs or recipients.

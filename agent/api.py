@@ -1677,8 +1677,9 @@ def _google_docs_mcp_auth_issue(*, command: str | None, raw_args: str) -> str | 
         return None
     return (
         "Google MCP auth token not found at "
-        f"{token_path}. Run `google-docs-mcp auth` in the deployed runtime "
-        "with the same GOOGLE_MCP_PROFILE and persistent volume."
+        f"{token_path}. Create the token locally with `google-docs-mcp auth` "
+        "using the same GOOGLE_MCP_PROFILE, then copy that token.json into the "
+        "deployed runtime's persistent volume."
     )
 
 
