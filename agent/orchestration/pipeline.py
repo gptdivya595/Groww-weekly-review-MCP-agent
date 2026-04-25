@@ -162,10 +162,10 @@ class OrchestrationService:
                     "orchestration_target": target.value,
                 },
             )
-            refreshed = self.storage.get_run(run_id)
-            if refreshed is None:
+            created_run = self.storage.get_run(run_id)
+            if created_run is None:
                 raise RuntimeError(f"Failed to create run record {run_id}.")
-            run_record = refreshed
+            run_record = created_run
             resumed = False
 
         lock = ProductWeekRunLock(
