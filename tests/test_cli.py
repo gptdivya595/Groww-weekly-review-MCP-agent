@@ -284,6 +284,35 @@ def test_cluster_persists_clusters_for_existing_run(tmp_path: Path, monkeypatch)
         "build_embedding_provider",
         lambda settings: SmallSyntheticProvider(),
     )
+    monkeypatch.setattr(
+        clustering_pipeline.ClusteringService,
+        "_reduce_dimensions",
+        lambda self, embeddings: embeddings,
+    )
+
+    def deterministic_small_sample_labels(self, embeddings):  # type: ignore[no-untyped-def]
+        import numpy as np
+
+        labels = np.full(shape=(len(embeddings),), fill_value=-1, dtype=int)
+        grouped_indices: dict[tuple[float, ...], list[int]] = {}
+        for index, vector in enumerate(np.asarray(embeddings, dtype=np.float32).tolist()):
+            grouped_indices.setdefault(tuple(float(value) for value in vector), []).append(index)
+
+        next_label = 0
+        for indices in grouped_indices.values():
+            if len(indices) < self.settings.cluster_min_cluster_size:
+                continue
+            for index in indices:
+                labels[index] = next_label
+            next_label += 1
+
+        return labels
+
+    monkeypatch.setattr(
+        clustering_pipeline.ClusteringService,
+        "_cluster_embeddings",
+        deterministic_small_sample_labels,
+    )
 
     cluster_result = runner.invoke(app, ["cluster", "--run", run_id])
     assert cluster_result.exit_code == 0, cluster_result.stdout
