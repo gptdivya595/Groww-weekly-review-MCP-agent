@@ -21,8 +21,8 @@ You will also need runtime configuration:
 
 Deployment config lives in:
 
-- `render.yaml`
-- `Dockerfile.render`
+- `railway.json`
+- `Dockerfile`
 - `frontend/vercel.json`
 
 ## 2. Backend Configuration
@@ -153,7 +153,7 @@ OpenAI key. You also need to provide or configure:
 
 When you are ready to deploy:
 
-- backend goes to Render from the repository root using `render.yaml`
+- backend goes to Railway from the repository root using `railway.json`
 - frontend goes to Vercel with Root Directory set to `frontend`
 
 See `docs/deployment.md` for the hosted setup.

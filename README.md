@@ -11,7 +11,7 @@ The repo now includes:
 - FastAPI control API
 - Next.js operator dashboard
 - phase-by-phase docs
-- Render and Vercel deployment runbooks
+- Railway and Vercel deployment runbooks
 
 ## Start Here
 
@@ -44,7 +44,7 @@ one-shot trigger controls in addition to run history and audit views.
 
 Deployment shape:
 
-- Render backend from the repository root using `render.yaml`
+- Railway backend from the repository root using `railway.json` and `Dockerfile`
 - Vercel frontend with Root Directory set to `frontend`
 
 Local frontend development:

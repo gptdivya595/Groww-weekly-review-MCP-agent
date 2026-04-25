@@ -1,8 +1,8 @@
 # Deployment
 
-This project deploys as:
+This project now deploys as:
 
-- backend API and scheduler host on Render
+- backend API and scheduler host on Railway
 - frontend operator dashboard on Vercel
 
 Google Docs and Gmail delivery still happens only through MCP commands executed
@@ -10,8 +10,8 @@ inside the backend runtime.
 
 ## 1. Files That Matter
 
-- `render.yaml`: Render Blueprint for the backend service
-- `Dockerfile.render`: backend image used by Render
+- `railway.json`: Railway config-as-code for the backend service
+- `Dockerfile`: backend image used by Railway
 - `frontend/vercel.json`: Vercel project configuration for the frontend
 
 Important:
@@ -20,68 +20,80 @@ Important:
 project Root Directory to `frontend` so that Vercel treats that folder as the
 project root and uses the config in that directory.
 
-## 2. Render Backend
+## 2. Railway Backend
 
 ### 2.1 Create The Service
 
 1. Push the repository to GitHub.
-2. In Render, create a new Blueprint from the repository root.
-3. Let Render read `render.yaml`.
+2. In Railway, create a new project from that repository.
+3. Deploy the repository root as the backend service.
 
 The backend service is already configured to:
 
 - build from the repository root
-- use `Dockerfile.render`
-- mount a persistent disk at `/app/data`
-- expose `/health` as the health check
+- use the root `Dockerfile`
+- expose `/health` as the health check through `railway.json`
+- start the API with the required data directories and database initialization
 
-### 2.2 Render Environment Variables
+### 2.2 Attach Persistent Storage
 
-Render will prefill most non-secret values from `render.yaml`. You still need
-to provide the secret or environment-specific values marked `sync: false`:
+Attach one Railway volume to the backend service and mount it at:
+
+```text
+/app/data
+```
+
+This is required because the backend stores SQLite state, raw review snapshots,
+artifacts, lock files, and Google MCP auth state under `/app/data`.
+
+### 2.3 Railway Environment Variables
+
+The Docker image already sets stable defaults for:
+
+- `PULSE_DB_PATH`
+- `PULSE_PRODUCTS_FILE`
+- `PULSE_RAW_DATA_DIR`
+- `PULSE_EMBEDDING_CACHE_DIR`
+- `PULSE_ARTIFACTS_DIR`
+- `PULSE_LOCKS_DIR`
+- `PULSE_DOCS_MCP_COMMAND`
+- `PULSE_DOCS_MCP_ARGS`
+- `PULSE_GMAIL_MCP_COMMAND`
+- `PULSE_GMAIL_MCP_ARGS`
+- `GOOGLE_MCP_PROFILE`
+- safe initial scheduler and send settings
+
+You still need to set these in Railway:
 
 - `PULSE_API_CORS_ORIGINS=https://<your-vercel-domain>`
 - `GOOGLE_CLIENT_ID=...`
 - `GOOGLE_CLIENT_SECRET=...`
 - `OPENAI_API_KEY=...`
 
-These are also important for production readiness:
+Recommended first-run settings:
 
-- `GOOGLE_MCP_PROFILE=pulse`
-- `PULSE_CONFIRM_SEND=false` for the first live validation
-- `PULSE_SCHEDULER_ENABLED=false` if you only want one-shot runs at first
-
-### 2.3 Persistent Storage
-
-The Render disk mounted at `/app/data` stores:
-
-- SQLite state
-- cached embeddings
-- raw review snapshots
-- generated artifacts
-- Google MCP auth state stored under the persisted home/config directories
-
-Without that disk, auth state and pipeline evidence will be lost on redeploy.
+- `PULSE_CONFIRM_SEND=false`
+- `PULSE_SCHEDULER_ENABLED=false`
 
 ### 2.4 Complete Google MCP Auth
 
-After the first successful Render deploy:
+After the first successful Railway deploy:
 
-1. Open a Render shell for the backend service.
+1. Open a shell inside the Railway backend service.
 2. Run the Google MCP auth flow in that runtime.
-3. Confirm the tokens are written under the persisted home/config paths used by
-   the service.
+3. Confirm the auth files are stored under the persisted `/app/data/home`
+   paths.
 
 Because the backend launches Docs and Gmail MCP tools over stdio, the backend
-container itself must be able to execute the MCP commands and access the saved
+container itself must be able to execute the MCP commands and reuse the saved
 auth state.
 
 ### 2.5 Verify The Backend
 
 After deploy, verify:
 
-- `GET https://<render-url>/health`
-- `GET https://<render-url>/api/overview`
+- `GET https://<railway-url>/health`
+- `GET https://<railway-url>/api/overview`
 
 ## 3. Vercel Frontend
 
@@ -96,10 +108,10 @@ After deploy, verify:
 Set:
 
 ```text
-NEXT_PUBLIC_API_BASE_URL=https://<your-render-backend-domain>
+NEXT_PUBLIC_API_BASE_URL=https://<your-railway-backend-domain>
 ```
 
-Deploy the frontend once. Then copy the Vercel production URL back into Render
+Deploy the frontend once. Then copy the Vercel production URL back into Railway
 as `PULSE_API_CORS_ORIGINS`.
 
 ### 3.3 Verify The Dashboard
@@ -116,23 +128,24 @@ After deploy, the dashboard should load and show:
 
 ## 4. Recommended First Deploy Order
 
-1. Deploy backend on Render from `render.yaml`.
-2. Verify `/health` and `/api/overview`.
-3. Deploy frontend on Vercel with Root Directory `frontend`.
-4. Copy the Vercel URL into Render as `PULSE_API_CORS_ORIGINS`.
-5. Complete Google Docs MCP and Gmail MCP auth inside the Render runtime.
-6. Keep `PULSE_CONFIRM_SEND=false`.
-7. Trigger one full Groww flow.
-8. Confirm the Google Doc section was appended through Docs MCP.
-9. Confirm the Gmail draft or send happened through Gmail MCP.
-10. Only then enable real sends.
+1. Deploy backend on Railway from the repository root.
+2. Attach the Railway volume at `/app/data`.
+3. Verify `/health` and `/api/overview`.
+4. Deploy frontend on Vercel with Root Directory `frontend`.
+5. Copy the Vercel URL into Railway as `PULSE_API_CORS_ORIGINS`.
+6. Complete Google Docs MCP and Gmail MCP auth inside the Railway runtime.
+7. Keep `PULSE_CONFIRM_SEND=false`.
+8. Trigger one full Groww flow.
+9. Confirm the Google Doc section was appended through Docs MCP.
+10. Confirm the Gmail draft or send happened through Gmail MCP.
+11. Only then enable real sends.
 
 ## 5. Common Failure Points
 
-- Render deployed without the persistent disk, so state and auth do not persist.
+- Railway deployed without the volume, so state and auth do not persist.
 - Vercel was pointed at the repo root instead of `frontend`.
 - `NEXT_PUBLIC_API_BASE_URL` still points to localhost.
 - `PULSE_API_CORS_ORIGINS` does not include the final Vercel domain.
-- Google MCP auth was completed locally instead of inside the persisted Render
+- Google MCP auth was completed locally instead of inside the persisted Railway
   runtime.
 - `products.yaml` still contains placeholder data for docs or recipients.

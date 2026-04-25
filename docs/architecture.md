@@ -101,7 +101,7 @@ Important implementation detail:
   to commands that actually exist in the backend runtime
 
 This matters for deployment. If a chosen MCP server depends on Node, Bun, or a
-custom binary, that runtime must be present in the Render backend container.
+custom binary, that runtime must be present in the Railway backend container.
 
 ## 6. Storage And Artifacts
 
@@ -159,13 +159,13 @@ These persisted artifacts support:
 
 Recommended topology:
 
-- backend on Render from the repository root
-- persistent Render disk mounted to `/app/data`
+- backend on Railway from the repository root
+- persistent Railway volume mounted to `/app/data`
 - frontend on Vercel with the project root set to `frontend`
 
 Environment responsibilities:
 
-- Render stores backend runtime variables such as MCP commands, timeouts,
+- Railway stores backend runtime variables such as MCP commands, timeouts,
   OpenAI settings, CORS, and send gating
 - Vercel stores `NEXT_PUBLIC_API_BASE_URL`
 - Google OAuth and Workspace permissions belong to the MCP server
