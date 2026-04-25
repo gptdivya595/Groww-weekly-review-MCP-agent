@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 
 from agent.config import get_settings
@@ -44,3 +45,32 @@ def test_get_settings_preserves_existing_process_env(tmp_path, monkeypatch) -> N
     get_settings()
 
     assert os.environ["GOOGLE_CLIENT_ID"] == "process-google-client"
+
+
+def test_get_settings_seeds_google_mcp_token_from_env(tmp_path, monkeypatch) -> None:
+    dotenv_path = tmp_path / ".env"
+    dotenv_path.write_text(
+        "\n".join(
+            [
+                "GOOGLE_MCP_PROFILE=divya",
+                'GOOGLE_MCP_TOKEN_JSON={"type":"authorized_user","client_id":"abc","refresh_token":"xyz"}',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.delenv("GOOGLE_MCP_PROFILE", raising=False)
+    monkeypatch.delenv("GOOGLE_MCP_TOKEN_JSON", raising=False)
+    monkeypatch.delenv("GOOGLE_MCP_TOKEN_B64", raising=False)
+
+    get_settings()
+
+    token_path = tmp_path / "home" / ".config" / "google-docs-mcp" / "divya" / "token.json"
+    assert token_path.exists()
+    assert json.loads(token_path.read_text(encoding="utf-8")) == {
+        "type": "authorized_user",
+        "client_id": "abc",
+        "refresh_token": "xyz",
+    }

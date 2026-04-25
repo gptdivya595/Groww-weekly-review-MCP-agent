@@ -96,8 +96,9 @@ After the first successful Railway deploy:
 
 1. Complete the Google MCP auth flow locally on your machine with the same
    `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_MCP_PROFILE`.
-2. Copy the resulting `token.json` into the Railway volume under the backend
-   runtime's config path.
+2. Either copy the resulting `token.json` into the Railway volume under the
+   backend runtime's config path, or store that JSON in Railway as
+   `GOOGLE_MCP_TOKEN_JSON` so the app writes the file on startup.
 3. Confirm the auth files are stored under the persisted `/app/data/home`
    paths.
 4. For the default profile, you should see a token path like:

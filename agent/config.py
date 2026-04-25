@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import json
 import os
 from pathlib import Path
 
@@ -124,6 +126,7 @@ def hydrate_process_env_from_dotenv(env_file: Path | None = None) -> None:
 
 def get_settings() -> Settings:
     hydrate_process_env_from_dotenv()
+    seed_google_mcp_token_from_env()
     raw = Settings()
     return raw.model_copy(
         update={
@@ -141,6 +144,46 @@ def get_settings() -> Settings:
             else None,
         }
     )
+
+
+def seed_google_mcp_token_from_env() -> None:
+    raw_json = os.getenv("GOOGLE_MCP_TOKEN_JSON")
+    raw_b64 = os.getenv("GOOGLE_MCP_TOKEN_B64")
+    if not raw_json and not raw_b64:
+        return
+
+    if raw_json:
+        token_payload = raw_json
+    else:
+        assert raw_b64 is not None
+        token_payload = base64.b64decode(raw_b64).decode("utf-8")
+
+    parsed = json.loads(token_payload)
+    if not isinstance(parsed, dict):
+        raise ValueError("GOOGLE_MCP_TOKEN_JSON must decode to a JSON object.")
+
+    token_path = google_mcp_token_path()
+    token_path.parent.mkdir(parents=True, exist_ok=True)
+    normalized = json.dumps(parsed, indent=2, ensure_ascii=False) + "\n"
+    token_path.write_text(normalized, encoding="utf-8")
+    os.chmod(token_path, 0o600)
+
+
+def google_mcp_token_path() -> Path:
+    xdg_config_home = os.getenv("XDG_CONFIG_HOME")
+    if xdg_config_home:
+        config_dir = Path(xdg_config_home)
+    else:
+        home = os.getenv("HOME")
+        if not home:
+            raise ValueError("HOME or XDG_CONFIG_HOME must be set for Google MCP token storage.")
+        config_dir = Path(home) / ".config"
+
+    profile = os.getenv("GOOGLE_MCP_PROFILE")
+    token_dir = config_dir / "google-docs-mcp"
+    if profile:
+        token_dir = token_dir / profile
+    return token_dir / "token.json"
 
 
 def load_products(settings: Settings) -> list[ProductConfig]:
