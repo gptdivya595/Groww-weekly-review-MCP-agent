@@ -1,0 +1,23 @@
+services:
+  pulse:
+    build: .
+    working_dir: /app
+    env_file:
+      - .env
+    command: ["pulse", "--help"]
+    volumes:
+      - .:/app
+      - pulse_data:/app/data
+  pulse-weekly:
+    build: .
+    profiles: ["weekly"]
+    working_dir: /app
+    env_file:
+      - .env
+    command: ["pulse", "run-weekly"]
+    volumes:
+      - .:/app
+      - pulse_data:/app/data
+
+volumes:
+  pulse_data:

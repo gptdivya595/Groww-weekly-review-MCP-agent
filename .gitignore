@@ -1,0 +1,53 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+frontend/.env.local
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+
+# Node / frontend
+**/node_modules/
+**/.next/
+**/out/
+**/dist/
+**/.pnpm-store/
+**/.turbo/
+**/.vercel/
+*.tsbuildinfo
+
+# Local databases and generated runtime data
+data/pulse.sqlite
+data/artifacts/
+data/raw/*
+!data/raw/.gitkeep
+data/cache/*
+!data/cache/.gitkeep
+data/locks/*
+!data/locks/.gitkeep
+output/runtime/
+*.log
+*.err.log
+*.out.log
+*.tgz
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

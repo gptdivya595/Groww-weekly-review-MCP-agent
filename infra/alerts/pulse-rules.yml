@@ -1,0 +1,90 @@
+groups:
+  - name: pulse-ingestion
+    interval: 5m
+    rules:
+      - alert: PulseWeeklyIngestionDrop
+        expr: |
+          sum by (product) (increase(pulse_reviews_ingested_total[7d]))
+          < on(product)
+          (
+            avg_over_time(
+              (sum by (product) (increase(pulse_reviews_ingested_total[7d])))[28d:7d]
+            ) * 0.5
+          )
+        for: 15m
+        labels:
+          severity: warning
+          service: pulse
+        annotations:
+          summary: Weekly review ingestion volume dropped sharply.
+          description: Reviews ingested for {{ $labels.product }} are below half of the trailing four-week average.
+
+      - alert: PulseAverageRatingShift
+        expr: |
+          abs(
+            (
+              sum by (product) (increase(pulse_review_average_rating_sum[7d]))
+              / clamp_min(sum by (product) (increase(pulse_review_average_rating_count[7d])), 1)
+            )
+            -
+            (
+              sum by (product) (increase(pulse_review_average_rating_sum[28d]))
+              / clamp_min(sum by (product) (increase(pulse_review_average_rating_count[28d])), 1)
+            )
+          ) > 1
+        for: 30m
+        labels:
+          severity: info
+          service: pulse
+        annotations:
+          summary: Average review rating shifted materially.
+          description: The average rating for {{ $labels.product }} moved by more than one point versus the broader baseline.
+
+  - name: pulse-llm
+    interval: 5m
+    rules:
+      - alert: PulseLLMSchemaFailureRate
+        expr: |
+          sum(rate(pulse_llm_schema_failures_total[1h]))
+          / clamp_min(sum(rate(pulse_themes_generated_total[1h])), 1)
+          > 0.02
+        for: 10m
+        labels:
+          severity: warning
+          service: pulse
+        annotations:
+          summary: LLM structured-output failures are elevated.
+          description: Schema failures exceeded 2% over the last hour.
+
+      - alert: PulseLLMCostSpike
+        expr: |
+          sum by (product) (increase(pulse_llm_cost_usd_total[7d]))
+          > on(product)
+          (
+            avg_over_time(
+              (sum by (product) (increase(pulse_llm_cost_usd_total[7d])))[28d:7d]
+            ) * 2
+          )
+        for: 30m
+        labels:
+          severity: warning
+          service: pulse
+        annotations:
+          summary: Estimated LLM cost spiked above the recent baseline.
+          description: Estimated LLM cost for {{ $labels.product }} is more than twice the rolling median proxy from the last four weeks.
+
+  - name: pulse-delivery
+    interval: 5m
+    rules:
+      - alert: PulseMcpErrorRate
+        expr: |
+          sum(rate(pulse_mcp_call_latency_ms_count{status="error"}[30m]))
+          / clamp_min(sum(rate(pulse_mcp_call_latency_ms_count[30m])), 1)
+          > 0.01
+        for: 10m
+        labels:
+          severity: critical
+          service: pulse
+        annotations:
+          summary: MCP error rate is above threshold.
+          description: More than 1% of MCP calls have failed during the last 30 minutes.

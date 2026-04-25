@@ -1,0 +1,74 @@
+services:
+  - type: web
+    name: weekly-product-review-pulse-api
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile.render
+    dockerContext: .
+    dockerCommand: >-
+      sh -c "mkdir -p /app/data/raw /app/data/cache/embeddings /app/data/artifacts
+      /app/data/locks /app/data/home /app/data/home/.config /app/data/home/.npm
+      && pulse init-db
+      && pulse serve --host 0.0.0.0 --port ${PORT:-10000}"
+    healthCheckPath: /health
+    disk:
+      name: pulse-data
+      mountPath: /app/data
+      sizeGB: 10
+    envVars:
+      - key: HOME
+        value: /app/data/home
+      - key: XDG_CONFIG_HOME
+        value: /app/data/home/.config
+      - key: NPM_CONFIG_CACHE
+        value: /app/data/home/.npm
+      - key: PULSE_DB_PATH
+        value: /app/data/pulse.sqlite
+      - key: PULSE_PRODUCTS_FILE
+        value: /app/products.yaml
+      - key: PULSE_RAW_DATA_DIR
+        value: /app/data/raw
+      - key: PULSE_EMBEDDING_CACHE_DIR
+        value: /app/data/cache/embeddings
+      - key: PULSE_ARTIFACTS_DIR
+        value: /app/data/artifacts
+      - key: PULSE_LOCKS_DIR
+        value: /app/data/locks
+      - key: PULSE_LOG_LEVEL
+        value: INFO
+      - key: PULSE_TIMEZONE
+        value: Asia/Kolkata
+      - key: PULSE_CONFIRM_SEND
+        value: "false"
+      - key: PULSE_SCHEDULER_ENABLED
+        value: "false"
+      - key: PULSE_SCHEDULER_MODE
+        value: external-cron
+      - key: PULSE_SCHEDULER_ISO_WEEKDAY
+        value: "1"
+      - key: PULSE_SCHEDULER_HOUR
+        value: "9"
+      - key: PULSE_SCHEDULER_MINUTE
+        value: "0"
+      - key: PULSE_DOCS_MCP_COMMAND
+        value: npx
+      - key: PULSE_DOCS_MCP_ARGS
+        value: '["-y","@a-bonus/google-docs-mcp"]'
+      - key: PULSE_DOCS_MCP_TIMEOUT_SECONDS
+        value: "40"
+      - key: PULSE_GMAIL_MCP_COMMAND
+        value: npx
+      - key: PULSE_GMAIL_MCP_ARGS
+        value: '["-y","@a-bonus/google-docs-mcp"]'
+      - key: PULSE_GMAIL_MCP_TIMEOUT_SECONDS
+        value: "40"
+      - key: PULSE_API_CORS_ORIGINS
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_MCP_PROFILE
+        value: pulse
+      - key: OPENAI_API_KEY
+        sync: false

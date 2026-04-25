@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns:im="http://itunes.apple.com/rss" xmlns="http://www.w3.org/2005/Atom" xml:lang="en">
+  <entry>
+    <id>1001</id>
+    <title>App runs well</title>
+    <content type="text">Reach me at help@example.com for follow-up.</content>
+    <im:rating>5</im:rating>
+    <updated>2026-04-21T10:30:00+05:30</updated>
+    <im:version>18.7.0</im:version>
+    <author>
+      <name>alice</name>
+      <uri>https://itunes.apple.com/in/reviews/id1</uri>
+    </author>
+    <link rel="related" href="https://apps.apple.com/in/review?id=1404871703" />
+  </entry>
+  <entry>
+    <id>1002</id>
+    <title>Needs support fixes</title>
+    <content type="text">Support asked for 99999 88888 and 1234 5678 9012.</content>
+    <im:rating>2</im:rating>
+    <updated>2026-04-18T09:00:00+05:30</updated>
+    <im:version>18.6.0</im:version>
+    <author>
+      <name>bob</name>
+      <uri>https://itunes.apple.com/in/reviews/id2</uri>
+    </author>
+    <link rel="related" href="https://apps.apple.com/in/review?id=1404871703" />
+  </entry>
+</feed>

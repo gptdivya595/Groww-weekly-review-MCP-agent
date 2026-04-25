@@ -1,0 +1,55 @@
+- slug: indmoney
+  display_name: INDMoney
+  app_store_app_id: "replace-with-app-store-id"
+  google_play_package: "replace.with.play.package"
+  google_doc_id: "replace-with-google-doc-id"
+  stakeholder_emails:
+    - product-team@example.com
+  default_lookback_weeks: 10
+  country: in
+  lang: en
+  active: true
+- slug: groww
+  display_name: Groww
+  app_store_app_id: "1404871703"
+  google_play_package: "com.nextbillion.groww"
+  google_doc_id: "replace-with-google-doc-id"
+  stakeholder_emails:
+    - gptdivya595@gmail.com
+  default_lookback_weeks: 10
+  country: in
+  lang: en
+  active: true
+- slug: powerup-money
+  display_name: PowerUp Money
+  app_store_app_id: "replace-with-app-store-id"
+  google_play_package: "replace.with.play.package"
+  google_doc_id: "replace-with-google-doc-id"
+  stakeholder_emails:
+    - product-team@example.com
+  default_lookback_weeks: 10
+  country: in
+  lang: en
+  active: true
+- slug: wealth-monitor
+  display_name: Wealth Monitor
+  app_store_app_id: "replace-with-app-store-id"
+  google_play_package: "replace.with.play.package"
+  google_doc_id: "replace-with-google-doc-id"
+  stakeholder_emails:
+    - product-team@example.com
+  default_lookback_weeks: 10
+  country: in
+  lang: en
+  active: true
+- slug: kuvera
+  display_name: Kuvera
+  app_store_app_id: "replace-with-app-store-id"
+  google_play_package: "replace.with.play.package"
+  google_doc_id: "replace-with-google-doc-id"
+  stakeholder_emails:
+    - product-team@example.com
+  default_lookback_weeks: 10
+  country: in
+  lang: en
+  active: true

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns:im="http://itunes.apple.com/rss" xmlns="http://www.w3.org/2005/Atom" xml:lang="en">
+  <entry>
+    <id>1003</id>
+    <title>Old feedback</title>
+    <content type="text">This review is outside the configured window.</content>
+    <im:rating>3</im:rating>
+    <updated>2026-02-20T07:00:00+05:30</updated>
+    <im:version>18.0.0</im:version>
+    <author>
+      <name>older-reviewer</name>
+      <uri>https://itunes.apple.com/in/reviews/id3</uri>
+    </author>
+    <link rel="related" href="https://apps.apple.com/in/review?id=1404871703" />
+  </entry>
+</feed>

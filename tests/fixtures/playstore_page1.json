@@ -1,0 +1,24 @@
+[
+  {
+    "reviewId": "gp-1",
+    "userName": "carol",
+    "content": "Love the app, email me at trader@example.com",
+    "score": 5,
+    "at": "2026-04-22T08:00:00+00:00",
+    "appVersion": "4.1.0"
+  },
+  {
+    "reviewId": "gp-2",
+    "userName": "dan",
+    "content": "Portfolio page crashes, call me on +91-9876543210",
+    "score": 1,
+    "at": "2026-04-15T08:00:00+00:00",
+    "reviewCreatedVersion": "4.0.9"
+  },
+  {
+    "userName": "missing-id",
+    "content": "This record should be skipped because it has no reviewId",
+    "score": 3,
+    "at": "2026-04-10T08:00:00+00:00"
+  }
+]
