@@ -3,6 +3,7 @@ services:
     name: weekly-product-review-pulse-api
     runtime: docker
     plan: starter
+    rootDir: .
     dockerfilePath: ./Dockerfile.render
     dockerContext: .
     dockerCommand: >-

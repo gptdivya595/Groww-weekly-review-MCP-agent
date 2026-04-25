@@ -19,6 +19,12 @@ You will also need runtime configuration:
 - Google Workspace auth configured inside those MCP servers
 - optionally `OPENAI_API_KEY` if you switch away from heuristic summarization
 
+Deployment config lives in:
+
+- `render.yaml`
+- `Dockerfile.render`
+- `frontend/vercel.json`
+
 ## 2. Backend Configuration
 
 1. Copy `.env.example` to `.env`.
@@ -118,7 +124,7 @@ uv run pulse run-weekly --weeks 10 --target all
 Or trigger a run from the dashboard:
 
 - `Run product flow`
-- `Run Weekly Batch`
+- `Run Weekly Pulse`
 
 ## 9. Validate Google Delivery Safely
 
@@ -142,3 +148,12 @@ OpenAI key. You also need to provide or configure:
 - stakeholder email addresses
 - Google Doc IDs or a confirmed auto-create strategy
 - final values for the remaining placeholder products in `products.yaml`
+
+## 11. Deploy Targets
+
+When you are ready to deploy:
+
+- backend goes to Render from the repository root using `render.yaml`
+- frontend goes to Vercel with Root Directory set to `frontend`
+
+See `docs/deployment.md` for the hosted setup.
