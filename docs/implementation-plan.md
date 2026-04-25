@@ -5,7 +5,7 @@ actual code status in this workspace.
 
 ## Current Workspace Status
 
-Audit date: 2026-04-23
+Audit date: 2026-04-25
 
 | Phase | Code status | End-to-end status in this workspace |
 | --- | --- | --- |
@@ -14,16 +14,22 @@ Audit date: 2026-04-23
 | Phase 2 - Clustering | Complete | Complete |
 | Phase 3 - Summarization | Complete | Complete |
 | Phase 4 - Render | Complete | Complete |
-| Phase 5 - Docs MCP | Complete | Pending live validation |
-| Phase 6 - Gmail MCP | Complete | Pending live validation |
-| Phase 7 - Orchestration | Complete | Pending live validation |
+| Phase 5 - Docs MCP | Complete | Complete |
+| Phase 6 - Gmail MCP | Complete | Complete |
+| Phase 7 - Orchestration | Complete | Complete |
 
-Why phases 5 to 7 are still pending here:
+Evidence for phases 5 to 7 now being complete here:
 
-- no Docs MCP delivery has been recorded in the local `deliveries` table
-- no Gmail MCP delivery has been recorded in the local `deliveries` table
-- this workspace does not currently have live Docs and Gmail MCP commands
-  configured in `.env`
+- the local `deliveries` table now contains one Docs delivery and one Gmail
+  delivery
+- `/api/completion` returns `overall_status = complete`
+- the validated Groww flow has been observed through live MCP-backed delivery
+
+Remaining scope caveat:
+
+- the whole multi-product fleet is not fully configured yet because
+  `products.yaml` still contains placeholder metadata for products other than
+  Groww
 
 ## Cross-Cutting Operator Surface
 
@@ -194,8 +200,8 @@ Complete and locally validated.
 
 ### Current Status
 
-Code complete. End-to-end validation is still pending in this workspace because
-no live Docs delivery has been recorded yet.
+Complete end to end in this workspace. A live Docs delivery has been recorded
+through MCP.
 
 ## Phase 6 - Gmail MCP
 
@@ -220,8 +226,8 @@ publish succeeds.
 
 ### Current Status
 
-Code complete. End-to-end validation is still pending in this workspace because
-no live Gmail delivery has been recorded yet.
+Complete end to end in this workspace. A live Gmail draft delivery has been
+recorded through MCP.
 
 ## Phase 7 - Orchestration, Scheduling, And Hardening
 
@@ -250,13 +256,13 @@ no live Gmail delivery has been recorded yet.
 
 ### Current Status
 
-Code complete. End-to-end completion is still pending until the environment has
-real Docs and Gmail MCP configuration and a successful live publish run.
+Complete end to end in this workspace. A live Docs plus Gmail MCP-backed run
+has been observed.
 
 ## Handoff Rules
 
-- Do not call the system fully complete until phases 5 to 7 have live MCP
-  evidence.
+- Treat any fresh deployment environment as incomplete until it records its own
+  live Docs and Gmail MCP evidence.
 - Keep Google delivery behind MCP only.
 - Keep the operator dashboard internal; do not treat it as the stakeholder
   report artifact.
