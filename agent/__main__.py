@@ -94,7 +94,7 @@ def _prepare_run(
             week_start=window.week_start.isoformat(),
             week_end=window.week_end.isoformat(),
             lookback_start=window.lookback_start.isoformat(),
-            metadata={"phase": "phase-0", "placeholder": True},
+            metadata={"phase": "phase-0", "placeholder": True, "input_mode": "scrape"},
         )
     except Exception:
         clear_run_context()
@@ -597,6 +597,7 @@ def run_pipeline(
         latest_run = storage.get_latest_run_for_product_week(
             product_config.slug,
             iso_week or current_iso_week(settings.timezone),
+            input_mode="scrape",
         )
         if latest_run is not None:
             typer.echo(

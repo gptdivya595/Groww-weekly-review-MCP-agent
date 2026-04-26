@@ -16,6 +16,7 @@ export type RunSummary = {
   completed_at: string | null;
   docs_status: string | null;
   gmail_status: string | null;
+  input_mode: string | null;
   warning: string | null;
   summary_path: string | null;
 };
@@ -129,6 +130,7 @@ export type JobSnapshot = {
   run_id: string | null;
   summary_path: string | null;
   error: string | null;
+  warning: string | null;
   items: JobItem[];
 };
 
@@ -174,6 +176,15 @@ type TriggerWeeklyRequest = {
   target?: "docs" | "gmail" | "all";
 };
 
+type UploadReviewCsvRequest = {
+  product_slug: string;
+  csv_text: string;
+  filename?: string;
+  iso_week?: string;
+  weeks?: number;
+  target?: "docs" | "gmail" | "all";
+};
+
 const API_BASE_URL = (
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
 ).replace(/\/$/, "");
@@ -184,7 +195,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(path, {
     cache: "no-store",
     ...init,
     headers,
@@ -223,6 +234,15 @@ export async function triggerWeekly(
   payload: TriggerWeeklyRequest,
 ): Promise<JobSnapshot> {
   return request<JobSnapshot>("/api/triggers/weekly", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function uploadReviewCsv(
+  payload: UploadReviewCsvRequest,
+): Promise<JobSnapshot> {
+  return request<JobSnapshot>("/api/triggers/upload-csv", {
     method: "POST",
     body: JSON.stringify(payload),
   });

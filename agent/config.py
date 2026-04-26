@@ -174,9 +174,11 @@ def google_mcp_token_path() -> Path:
     if xdg_config_home:
         config_dir = Path(xdg_config_home)
     else:
-        home = os.getenv("HOME")
+        home = os.getenv("HOME") or os.getenv("USERPROFILE")
         if not home:
-            raise ValueError("HOME or XDG_CONFIG_HOME must be set for Google MCP token storage.")
+            raise ValueError(
+                "HOME, USERPROFILE, or XDG_CONFIG_HOME must be set for Google MCP token storage."
+            )
         config_dir = Path(home) / ".config"
 
     profile = os.getenv("GOOGLE_MCP_PROFILE")

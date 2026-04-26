@@ -29,6 +29,7 @@ htmlcov/
 **/.pnpm-store/
 **/.turbo/
 **/.vercel/
+.playwright-cli/
 *.tsbuildinfo
 
 # Local databases and generated runtime data
@@ -45,6 +46,7 @@ output/runtime/
 *.err.log
 *.out.log
 *.tgz
+Groww.pdf
 
 # OS / editor
 .DS_Store

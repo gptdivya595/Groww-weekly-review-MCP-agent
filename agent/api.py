@@ -18,6 +18,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from agent.config import get_product_by_slug, get_settings, load_products
+from agent.ingestion.csv_upload import parse_uploaded_reviews
+from agent.ingestion.pipeline import filter_reviews_to_window, persist_uploaded_reviews_for_run
 from agent.logging import configure_logging, get_logger
 from agent.mcp_client.docs_client import DocsMcpClient
 from agent.mcp_client.gmail_client import GmailMcpClient
@@ -26,11 +28,23 @@ from agent.orchestration.pipeline import (
     build_run_audit_payload,
     run_pipeline_for_product,
     run_weekly_for_products,
+    target_already_satisfied,
 )
-from agent.pulse_types import DeliveryTarget, ProductConfig, StoredDeliveryRecord, StoredRunRecord
+from agent.pulse_types import (
+    DeliveryTarget,
+    ProductConfig,
+    Stage,
+    StoredDeliveryRecord,
+    StoredRunRecord,
+)
 from agent.storage import Storage
 from agent.telemetry import configure_telemetry
-from agent.time_utils import current_iso_week, next_weekly_schedule_time
+from agent.time_utils import (
+    current_iso_week,
+    generate_run_id,
+    next_weekly_schedule_time,
+    resolve_iso_week_window,
+)
 
 
 class ApiDeliverySummary(BaseModel):
@@ -53,6 +67,7 @@ class ApiRunSummary(BaseModel):
     completed_at: datetime | None = None
     docs_status: str | None = None
     gmail_status: str | None = None
+    input_mode: str | None = None
     warning: str | None = None
     summary_path: str | None = None
 
@@ -185,6 +200,15 @@ class TriggerWeeklyRequest(BaseModel):
     target: DeliveryTarget = DeliveryTarget.ALL
 
 
+class TriggerCsvUploadRequest(BaseModel):
+    product_slug: str
+    csv_text: str = Field(min_length=1)
+    filename: str | None = None
+    iso_week: str | None = None
+    weeks: int | None = Field(default=None, ge=1)
+    target: DeliveryTarget = DeliveryTarget.ALL
+
+
 class ApiJobItem(BaseModel):
     product_slug: str
     status: str
@@ -206,6 +230,7 @@ class ApiJobSnapshot(BaseModel):
     run_id: str | None = None
     summary_path: str | None = None
     error: str | None = None
+    warning: str | None = None
     items: list[ApiJobItem] = Field(default_factory=list)
 
 
@@ -238,14 +263,67 @@ class ApiRuntime:
         return sorted(jobs, key=lambda item: item.submitted_at, reverse=True)
 
     def submit_run(self, request: TriggerRunRequest) -> ApiJobSnapshot:
-        products = self.refresh_products()
-        if request.product_slug not in {product.slug for product in products}:
+        self.refresh_products()
+        try:
+            product = get_product_by_slug(request.product_slug, self.settings)
+        except KeyError as exc:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Unknown product slug: {request.product_slug}",
-            )
+                detail=str(exc),
+            ) from exc
 
         resolved_iso_week = request.iso_week or current_iso_week(self.settings.timezone)
+        existing_run = self.storage.get_latest_run_for_product_week(
+            request.product_slug,
+            resolved_iso_week,
+            input_mode="scrape",
+        )
+        if existing_run is not None and target_already_satisfied(
+            storage=self.storage,
+            run_record=existing_run,
+            target=request.target,
+            confirm_send=self.settings.confirm_send,
+        ):
+            warning = self._build_idempotency_warning(
+                product=product,
+                iso_week=resolved_iso_week,
+                target=request.target,
+            )
+            self.storage.update_run_status(
+                existing_run.run_id,
+                status="completed",
+                stage=Stage.RUN.value,
+                metadata={
+                    "phase": "phase-7",
+                    "orchestration_target": request.target.value,
+                    "orchestration_status": "completed",
+                    "orchestration_resumed": True,
+                    "warning": warning,
+                },
+            )
+            refreshed_run = self.storage.get_run(existing_run.run_id) or existing_run
+            completed_at = datetime.now(UTC)
+            job = ApiJobSnapshot(
+                job_id=uuid4().hex,
+                kind="single-run",
+                status="completed",
+                submitted_at=completed_at,
+                started_at=completed_at,
+                completed_at=completed_at,
+                iso_week=resolved_iso_week,
+                product_slug=request.product_slug,
+                target=request.target.value,
+                run_id=refreshed_run.run_id,
+                summary_path=(
+                    str(summary_path)
+                    if (summary_path := self._summary_path(refreshed_run)) is not None
+                    else None
+                ),
+                warning=warning,
+            )
+            self._store_job(job)
+            return self._get_job(job.job_id)
+
         job = ApiJobSnapshot(
             job_id=uuid4().hex,
             kind="single-run",
@@ -258,7 +336,11 @@ class ApiRuntime:
         self._store_job(job)
         self.executor.submit(self._execute_single_run, job.job_id, request, resolved_iso_week)
 
-        discovered_run = self._wait_for_run_id(request.product_slug, resolved_iso_week)
+        discovered_run = self._wait_for_run_id(
+            request.product_slug,
+            resolved_iso_week,
+            input_mode="scrape",
+        )
         if discovered_run is not None:
             self._update_job(job.job_id, run_id=discovered_run.run_id, status="running")
         return self._get_job(job.job_id)
@@ -281,6 +363,131 @@ class ApiRuntime:
         )
         self._store_job(job)
         self.executor.submit(self._execute_weekly_run, job.job_id, request, resolved_iso_week)
+        return self._get_job(job.job_id)
+
+    def submit_csv_upload(self, request: TriggerCsvUploadRequest) -> ApiJobSnapshot:
+        self.refresh_products()
+        try:
+            product = get_product_by_slug(request.product_slug, self.settings)
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(exc),
+            ) from exc
+
+        resolved_iso_week = request.iso_week or current_iso_week(self.settings.timezone)
+        resolved_lookback_weeks = request.weeks or product.default_lookback_weeks
+        window = resolve_iso_week_window(
+            resolved_iso_week,
+            resolved_lookback_weeks,
+            self.settings.timezone,
+        )
+
+        try:
+            parsed_upload = parse_uploaded_reviews(
+                request.csv_text,
+                filename=request.filename,
+                fallback_review_time=window.week_end,
+            )
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
+
+        windowed_reviews = filter_reviews_to_window(
+            parsed_upload.reviews,
+            lookback_start=window.lookback_start,
+            week_end=window.week_end,
+        )
+        if not windowed_reviews:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "The uploaded CSV parsed successfully, but no reviews fell inside the "
+                    "selected lookback window. Increase the lookback weeks or include "
+                    "`review_created_at` / `review_updated_at` values for the rows you want "
+                    "to analyze."
+                ),
+            )
+
+        run_id = generate_run_id()
+        self.storage.upsert_run(
+            run_id=run_id,
+            product_slug=product.slug,
+            iso_week=resolved_iso_week,
+            stage=Stage.RUN.value,
+            status="planned",
+            lookback_weeks=resolved_lookback_weeks,
+            week_start=window.week_start.isoformat(),
+            week_end=window.week_end.isoformat(),
+            lookback_start=window.lookback_start.isoformat(),
+            metadata={
+                "phase": "phase-7",
+                "placeholder": False,
+                "orchestration_target": request.target.value,
+                "input_mode": "csv_upload",
+                "upload_filename": request.filename,
+                "upload_columns": parsed_upload.columns,
+                "upload_total_rows": parsed_upload.total_rows,
+                "upload_accepted_rows": parsed_upload.accepted_rows,
+                "upload_rows_in_window": len(windowed_reviews),
+                "upload_rows_outside_window": parsed_upload.accepted_rows
+                - len(windowed_reviews),
+                "upload_skipped_rows": parsed_upload.skipped_rows,
+                "upload_derived_timestamp_rows": parsed_upload.derived_timestamp_rows,
+                "upload_sample_errors": parsed_upload.sample_errors,
+            },
+        )
+
+        ingestion_result = persist_uploaded_reviews_for_run(
+            settings=self.settings,
+            storage=self.storage,
+            product=product,
+            window=window,
+            run_id=run_id,
+            reviews=windowed_reviews,
+        )
+        self.storage.update_run_status(
+            run_id,
+            status="completed",
+            stage=Stage.INGEST.value,
+            metadata=ingestion_result.to_metadata()
+            | {
+                "input_mode": "csv_upload",
+                "upload_filename": request.filename,
+                "upload_columns": parsed_upload.columns,
+                "upload_total_rows": parsed_upload.total_rows,
+                "upload_accepted_rows": parsed_upload.accepted_rows,
+                "upload_rows_in_window": len(windowed_reviews),
+                "upload_rows_outside_window": parsed_upload.accepted_rows
+                - len(windowed_reviews),
+                "upload_skipped_rows": parsed_upload.skipped_rows,
+                "upload_derived_timestamp_rows": parsed_upload.derived_timestamp_rows,
+                "upload_sample_errors": parsed_upload.sample_errors,
+            },
+            completed=True,
+        )
+
+        job = ApiJobSnapshot(
+            job_id=uuid4().hex,
+            kind="csv-upload",
+            status="queued",
+            submitted_at=datetime.now(UTC),
+            iso_week=resolved_iso_week,
+            product_slug=product.slug,
+            target=request.target.value,
+            run_id=run_id,
+        )
+        self._store_job(job)
+        self.executor.submit(
+            self._execute_csv_upload_run,
+            job.job_id,
+            product.slug,
+            run_id,
+            resolved_lookback_weeks,
+            request.target,
+        )
         return self._get_job(job.job_id)
 
     def build_overview(self, *, limit: int = 20) -> ApiOverviewResponse:
@@ -374,6 +581,8 @@ class ApiRuntime:
                 iso_week=resolved_iso_week,
                 lookback_weeks=request.weeks,
                 target=request.target,
+                input_mode="scrape",
+                preferred_run_id=None,
             )
             self._update_job(
                 job_id,
@@ -381,11 +590,13 @@ class ApiRuntime:
                 completed_at=datetime.now(UTC),
                 run_id=result.run_id,
                 summary_path=str(result.summary_path),
+                warning=result.warning,
             )
         except Exception as exc:
             latest_run = self.storage.get_latest_run_for_product_week(
                 request.product_slug,
                 resolved_iso_week,
+                input_mode="scrape",
             )
             self.logger.exception(
                 "api_single_run_failed",
@@ -402,6 +613,61 @@ class ApiRuntime:
                 summary_path=(
                     str(self._summary_path(latest_run))
                     if latest_run is not None and self._summary_path(latest_run) is not None
+                    else None
+                ),
+                error=str(exc),
+            )
+
+    def _execute_csv_upload_run(
+        self,
+        job_id: str,
+        product_slug: str,
+        run_id: str,
+        lookback_weeks: int,
+        target: DeliveryTarget,
+    ) -> None:
+        self._update_job(job_id, status="running", started_at=datetime.now(UTC))
+        try:
+            run_record = self.storage.get_run(run_id)
+            if run_record is None:
+                raise KeyError(f"Unknown run id: {run_id}")
+
+            product = get_product_by_slug(product_slug, self.settings)
+            result = run_pipeline_for_product(
+                settings=self.settings,
+                storage=self.storage,
+                product=product,
+                iso_week=run_record.iso_week,
+                lookback_weeks=lookback_weeks,
+                target=target,
+                input_mode="csv_upload",
+                preferred_run_id=run_id,
+            )
+            self._update_job(
+                job_id,
+                status="completed",
+                completed_at=datetime.now(UTC),
+                run_id=result.run_id,
+                summary_path=str(result.summary_path),
+                warning=result.warning,
+            )
+        except Exception as exc:
+            run_record = self.storage.get_run(run_id)
+            self.logger.exception(
+                "api_csv_upload_run_failed",
+                job_id=job_id,
+                product=product_slug,
+                run_id=run_id,
+                error=str(exc),
+            )
+            self._update_job(
+                job_id,
+                status="failed",
+                completed_at=datetime.now(UTC),
+                run_id=run_id,
+                summary_path=(
+                    str(self._summary_path(run_record))
+                    if run_record is not None and self._summary_path(run_record) is not None
                     else None
                 ),
                 error=str(exc),
@@ -454,17 +720,48 @@ class ApiRuntime:
         product_slug: str,
         iso_week: str,
         *,
+        input_mode: str | None = None,
         attempts: int = 25,
         delay_seconds: float = 0.2,
     ) -> StoredRunRecord | None:
         for _ in range(attempts):
-            run_record = self.storage.get_latest_run_for_product_week(product_slug, iso_week)
+            run_record = self.storage.get_latest_run_for_product_week(
+                product_slug,
+                iso_week,
+                input_mode=input_mode,
+            )
             if run_record is not None:
                 return run_record
             import time
 
             time.sleep(delay_seconds)
         return None
+
+    def _build_idempotency_warning(
+        self,
+        *,
+        product: ProductConfig,
+        iso_week: str,
+        target: DeliveryTarget,
+    ) -> str:
+        if target is DeliveryTarget.DOCS:
+            return (
+                f"{product.display_name} already has a Google Doc section for {iso_week}. "
+                "The weekly pulse is idempotent, so the default trigger will not append "
+                "a duplicate section for the same product and ISO week."
+            )
+        if target is DeliveryTarget.GMAIL:
+            return (
+                f"{product.display_name} already has a Gmail delivery for {iso_week}. "
+                "The weekly pulse is idempotent, so the default trigger will not create "
+                "a duplicate Gmail delivery for the same product and ISO week."
+            )
+        return (
+            f"{product.display_name} already has Docs and Gmail delivery for {iso_week}. "
+            "The weekly pulse is idempotent, so the default trigger will not append a "
+            "duplicate Google Doc section or create a duplicate Gmail delivery for the "
+            "same product and ISO week."
+        )
 
     def _serialize_run(
         self,
@@ -487,6 +784,7 @@ class ApiRuntime:
             completed_at=run_record.completed_at,
             docs_status=docs_delivery.status if docs_delivery is not None else None,
             gmail_status=gmail_delivery.status if gmail_delivery is not None else None,
+            input_mode=_input_mode_from_metadata(run_record.metadata),
             warning=_warning_from_metadata(run_record.metadata),
             summary_path=(
                 str(summary_path)
@@ -1627,6 +1925,17 @@ def create_app() -> FastAPI:
     def trigger_weekly(request: Request, payload: TriggerWeeklyRequest) -> ApiJobSnapshot:
         return _runtime(request).submit_weekly(payload)
 
+    @app.post(
+        "/api/triggers/upload-csv",
+        response_model=ApiJobSnapshot,
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    def trigger_upload_csv(
+        request: Request,
+        payload: TriggerCsvUploadRequest,
+    ) -> ApiJobSnapshot:
+        return _runtime(request).submit_csv_upload(payload)
+
     return app
 
 
@@ -1721,6 +2030,13 @@ def _warning_from_metadata(metadata: dict[str, Any]) -> str | None:
         if isinstance(value, str) and value.strip():
             return value.strip()
     return None
+
+
+def _input_mode_from_metadata(metadata: dict[str, Any]) -> str:
+    value = metadata.get("input_mode")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return "scrape"
 
 
 def _scheduler_cadence_label(

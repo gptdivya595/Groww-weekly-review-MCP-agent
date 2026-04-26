@@ -5,7 +5,11 @@ import threading
 import time
 
 from agent.mcp_client import session
-from agent.mcp_client.session import _STREAM_CLOSED, StdioJsonRpcTransport, normalize_command_for_runtime
+from agent.mcp_client.session import (
+    _STREAM_CLOSED,
+    StdioJsonRpcTransport,
+    normalize_command_for_runtime,
+)
 
 
 def test_close_does_not_raise_thread_exceptions(monkeypatch) -> None:

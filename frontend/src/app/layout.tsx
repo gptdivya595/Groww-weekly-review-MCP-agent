@@ -14,9 +14,9 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Pulse Operator Console",
+  title: "Groww Analysis Center",
   description:
-    "Monitor weekly review pulse runs, readiness, and delivery status from one operator dashboard.",
+    "Monitor the Groww weekly review pulse, MCP delivery rails, scheduler health, and one-shot trigger actions from one analysis dashboard.",
 };
 
 export default function RootLayout({

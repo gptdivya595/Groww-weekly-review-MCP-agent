@@ -34,6 +34,8 @@ def run_pipeline_for_product(
     iso_week: str | None = None,
     lookback_weeks: int | None = None,
     target: DeliveryTarget = DeliveryTarget.ALL,
+    input_mode: str = "scrape",
+    preferred_run_id: str | None = None,
 ) -> PipelineRunResult:
     service = OrchestrationService(settings=settings, storage=storage)
     return service.run(
@@ -41,6 +43,8 @@ def run_pipeline_for_product(
         iso_week=iso_week,
         lookback_weeks=lookback_weeks,
         target=target,
+        input_mode=input_mode,
+        preferred_run_id=preferred_run_id,
     )
 
 
@@ -59,6 +63,21 @@ def run_weekly_for_products(
         iso_week=iso_week,
         lookback_weeks=lookback_weeks,
         target=target,
+    )
+
+
+def target_already_satisfied(
+    *,
+    storage: Storage,
+    run_record: StoredRunRecord,
+    target: DeliveryTarget,
+    confirm_send: bool,
+) -> bool:
+    return _target_satisfied(
+        storage=storage,
+        run_record=run_record,
+        target=target,
+        confirm_send=confirm_send,
     )
 
 
@@ -102,10 +121,27 @@ class OrchestrationService:
         iso_week: str | None,
         lookback_weeks: int | None,
         target: DeliveryTarget,
+        input_mode: str,
+        preferred_run_id: str | None,
     ) -> PipelineRunResult:
         resolved_iso_week = iso_week or current_iso_week(self.settings.timezone)
-        latest_run = self.storage.get_latest_run_for_product_week(product.slug, resolved_iso_week)
-        resumed = latest_run is not None
+        if preferred_run_id is not None:
+            latest_run = self.storage.get_run(preferred_run_id)
+            if latest_run is None:
+                raise KeyError(f"Unknown run id: {preferred_run_id}")
+            if latest_run.product_slug != product.slug:
+                raise ValueError(
+                    f"Run {preferred_run_id} does not belong to product {product.slug}."
+                )
+            resolved_iso_week = latest_run.iso_week
+            resumed = True
+        else:
+            latest_run = self.storage.get_latest_run_for_product_week(
+                product.slug,
+                resolved_iso_week,
+                input_mode=input_mode,
+            )
+            resumed = latest_run is not None
 
         if latest_run is not None and _target_satisfied(
             storage=self.storage,
@@ -160,6 +196,7 @@ class OrchestrationService:
                     "phase": "phase-7",
                     "placeholder": False,
                     "orchestration_target": target.value,
+                    "input_mode": input_mode,
                 },
             )
             created_run = self.storage.get_run(run_id)
@@ -389,6 +426,8 @@ class OrchestrationService:
                         iso_week=resolved_iso_week,
                         lookback_weeks=lookback_weeks,
                         target=target,
+                        input_mode="scrape",
+                        preferred_run_id=None,
                     )
                     items.append(
                         WeeklyBatchItem(
@@ -403,6 +442,7 @@ class OrchestrationService:
                     latest_run = self.storage.get_latest_run_for_product_week(
                         product.slug,
                         resolved_iso_week,
+                        input_mode="scrape",
                     )
                     items.append(
                         WeeklyBatchItem(

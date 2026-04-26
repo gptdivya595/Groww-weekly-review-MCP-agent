@@ -50,6 +50,13 @@ CREATE TABLE IF NOT EXISTS reviews (
     UNIQUE(source, external_id)
 );
 
+CREATE TABLE IF NOT EXISTS run_reviews (
+    run_id TEXT NOT NULL,
+    review_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (run_id, review_id)
+);
+
 CREATE TABLE IF NOT EXISTS review_embeddings (
     review_id TEXT NOT NULL,
     run_id TEXT NOT NULL,
@@ -296,9 +303,11 @@ class Storage:
         self,
         product_slug: str,
         iso_week: str,
+        *,
+        input_mode: str | None = None,
     ) -> StoredRunRecord | None:
         with self.connect() as connection:
-            row = connection.execute(
+            rows = connection.execute(
                 """
                 SELECT
                     run_id,
@@ -316,15 +325,15 @@ class Storage:
                 FROM runs
                 WHERE product_slug = ? AND iso_week = ?
                 ORDER BY started_at DESC
-                LIMIT 1
                 """,
                 (product_slug, iso_week),
-            ).fetchone()
+            ).fetchall()
 
-        if row is None:
-            return None
-
-        return self._build_run_record(row)
+        for row in rows:
+            run_record = self._build_run_record(row)
+            if self._run_matches_input_mode(run_record, input_mode=input_mode):
+                return run_record
+        return None
 
     def seed_products(self, products: list[ProductConfig]) -> None:
         timestamp = utc_now_iso()
@@ -755,8 +764,90 @@ class Storage:
 
         return stats
 
+    def replace_run_review_ids(
+        self,
+        *,
+        run_id: str,
+        review_ids: Sequence[str],
+    ) -> None:
+        ordered_ids = list(dict.fromkeys(review_ids))
+        timestamp = utc_now_iso()
+
+        with self.connect() as connection:
+            connection.execute("DELETE FROM run_reviews WHERE run_id = ?", (run_id,))
+            for review_id in ordered_ids:
+                connection.execute(
+                    """
+                    INSERT INTO run_reviews (
+                        run_id,
+                        review_id,
+                        created_at
+                    )
+                    VALUES (?, ?, ?)
+                    """,
+                    (run_id, review_id, timestamp),
+                )
+
+    def add_run_review_ids(
+        self,
+        *,
+        run_id: str,
+        review_ids: Sequence[str],
+    ) -> None:
+        ordered_ids = list(dict.fromkeys(review_ids))
+        timestamp = utc_now_iso()
+
+        with self.connect() as connection:
+            for review_id in ordered_ids:
+                connection.execute(
+                    """
+                    INSERT INTO run_reviews (
+                        run_id,
+                        review_id,
+                        created_at
+                    )
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(run_id, review_id) DO NOTHING
+                    """,
+                    (run_id, review_id, timestamp),
+                )
+
     def fetch_reviews_for_run(self, run_record: StoredRunRecord) -> list[ReviewDocument]:
         with self.connect() as connection:
+            linked_review = connection.execute(
+                """
+                SELECT 1
+                FROM run_reviews
+                WHERE run_id = ?
+                LIMIT 1
+                """,
+                (run_record.run_id,),
+            ).fetchone()
+
+            if linked_review is not None:
+                rows = connection.execute(
+                    """
+                    SELECT
+                        reviews.review_id,
+                        reviews.product_slug,
+                        reviews.source,
+                        reviews.rating,
+                        reviews.title,
+                        reviews.body,
+                        reviews.pii_scrubbed_body,
+                        reviews.locale,
+                        reviews.body_hash,
+                        reviews.review_created_at,
+                        reviews.review_updated_at
+                    FROM run_reviews
+                    JOIN reviews ON reviews.review_id = run_reviews.review_id
+                    WHERE run_reviews.run_id = ?
+                    ORDER BY reviews.review_id
+                    """,
+                    (run_record.run_id,),
+                ).fetchall()
+                return [self._build_review_document(row) for row in rows]
+
             rows = connection.execute(
                 """
                 SELECT
@@ -1122,3 +1213,24 @@ class Storage:
         if cleaned.lower().startswith("replace-with-"):
             return None
         return cleaned
+
+    @staticmethod
+    def _run_matches_input_mode(
+        run_record: StoredRunRecord,
+        *,
+        input_mode: str | None,
+    ) -> bool:
+        if input_mode is None:
+            return True
+
+        recorded_mode = run_record.metadata.get("input_mode")
+        normalized_recorded_mode = (
+            recorded_mode.strip().lower()
+            if isinstance(recorded_mode, str) and recorded_mode.strip()
+            else None
+        )
+
+        normalized_requested_mode = input_mode.strip().lower()
+        if normalized_requested_mode == "scrape":
+            return normalized_recorded_mode in {None, "scrape"}
+        return normalized_recorded_mode == normalized_requested_mode

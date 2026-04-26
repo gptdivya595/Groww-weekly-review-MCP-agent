@@ -220,39 +220,37 @@ def test_cluster_persists_clusters_for_existing_run(tmp_path: Path, monkeypatch)
     assert ingest_result.exit_code == 0, ingest_result.stdout
 
     storage = Storage(db_path)
-    storage.upsert_reviews(
-        "groww",
-        [
-            RawReview(
-                source=ReviewSource.PLAYSTORE,
-                external_id="extra-support",
-                rating=2,
-                title="Extra support",
-                body="Support ticket tracking is confusing and the response is very slow.",
-                author_alias="extra-support",
-                review_created_at=datetime(2026, 4, 22, 12, 0, tzinfo=UTC),
-                review_updated_at=datetime(2026, 4, 22, 12, 0, tzinfo=UTC),
-                locale="en-in",
-                app_version="1.0.0",
-                source_url="https://example.com/extra-support",
-                raw_payload={"fixture": "extra-support"},
-            ),
-            RawReview(
-                source=ReviewSource.PLAYSTORE,
-                external_id="extra-crash",
-                rating=1,
-                title="Extra crash",
-                body="The app freezes and crash behavior appears during portfolio refresh.",
-                author_alias="extra-crash",
-                review_created_at=datetime(2026, 4, 21, 12, 0, tzinfo=UTC),
-                review_updated_at=datetime(2026, 4, 21, 12, 0, tzinfo=UTC),
-                locale="en-in",
-                app_version="1.0.0",
-                source_url="https://example.com/extra-crash",
-                raw_payload={"fixture": "extra-crash"},
-            ),
-        ],
-    )
+    extra_reviews = [
+        RawReview(
+            source=ReviewSource.PLAYSTORE,
+            external_id="extra-support",
+            rating=2,
+            title="Extra support",
+            body="Support ticket tracking is confusing and the response is very slow.",
+            author_alias="extra-support",
+            review_created_at=datetime(2026, 4, 22, 12, 0, tzinfo=UTC),
+            review_updated_at=datetime(2026, 4, 22, 12, 0, tzinfo=UTC),
+            locale="en-in",
+            app_version="1.0.0",
+            source_url="https://example.com/extra-support",
+            raw_payload={"fixture": "extra-support"},
+        ),
+        RawReview(
+            source=ReviewSource.PLAYSTORE,
+            external_id="extra-crash",
+            rating=1,
+            title="Extra crash",
+            body="The app freezes and crash behavior appears during portfolio refresh.",
+            author_alias="extra-crash",
+            review_created_at=datetime(2026, 4, 21, 12, 0, tzinfo=UTC),
+            review_updated_at=datetime(2026, 4, 21, 12, 0, tzinfo=UTC),
+            locale="en-in",
+            app_version="1.0.0",
+            source_url="https://example.com/extra-crash",
+            raw_payload={"fixture": "extra-crash"},
+        ),
+    ]
+    storage.upsert_reviews("groww", extra_reviews)
     with storage.connect() as connection:
         latest_run = connection.execute(
             "SELECT run_id FROM runs ORDER BY started_at DESC LIMIT 1"
@@ -260,6 +258,10 @@ def test_cluster_persists_clusters_for_existing_run(tmp_path: Path, monkeypatch)
 
     assert latest_run is not None
     run_id = latest_run["run_id"]
+    storage.add_run_review_ids(
+        run_id=run_id,
+        review_ids=[review.review_id for review in extra_reviews],
+    )
 
     class SmallSyntheticProvider:
         provider_name = "synthetic"

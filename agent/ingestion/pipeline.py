@@ -47,6 +47,52 @@ def run_ingestion_for_run(
     return service.run(product=product, window=window, run_id=run_id)
 
 
+def persist_uploaded_reviews_for_run(
+    *,
+    settings: Settings,
+    storage: Storage,
+    product: ProductConfig,
+    window: RunWindow,
+    run_id: str,
+    reviews: list[RawReview],
+) -> IngestionResult:
+    service = IngestionService(
+        settings=settings,
+        storage=storage,
+        appstore_client=build_appstore_client(settings),
+        playstore_client=build_playstore_client(settings),
+    )
+    return service.persist_reviews(
+        product=product,
+        window=window,
+        run_id=run_id,
+        reviews=reviews,
+        source_reports=[
+            SourceIngestionReport(
+                source=ReviewSource.CSV_UPLOAD,
+                status="ok" if reviews else "empty",
+                fetched=len(reviews),
+            )
+        ],
+    )
+
+
+def filter_reviews_to_window(
+    reviews: list[RawReview],
+    *,
+    lookback_start: datetime,
+    week_end: datetime,
+) -> list[RawReview]:
+    return [
+        review
+        for review in reviews
+        if (
+            review_time := review.review_updated_at or review.review_created_at
+        ) is not None
+        and lookback_start <= review_time <= week_end
+    ]
+
+
 class IngestionService:
     def __init__(
         self,
@@ -116,25 +162,46 @@ class IngestionService:
             if not collected_reviews and any(report.status == "error" for report in source_reports):
                 raise RuntimeError("All configured review sources failed.")
 
-            deduped_reviews = self._deduplicate_reviews(collected_reviews)
-            snapshot_path = self._write_snapshot(product.slug, run_id, deduped_reviews)
-            upsert_stats = self.storage.upsert_reviews(product.slug, deduped_reviews)
-            degraded = any(report.status in {"empty", "error"} for report in source_reports)
-            average_rating = _average_rating(deduped_reviews)
-            if average_rating is not None:
-                record_average_rating(source="combined", value=average_rating)
-
-            return IngestionResult(
+            return self.persist_reviews(
+                product=product,
+                window=window,
                 run_id=run_id,
-                product_slug=product.slug,
-                iso_week=window.iso_week,
-                lookback_weeks=window.lookback_weeks,
-                total_reviews=len(deduped_reviews),
-                snapshot_path=snapshot_path,
-                degraded=degraded,
-                upsert=upsert_stats,
-                sources=source_reports,
+                reviews=collected_reviews,
+                source_reports=source_reports,
             )
+
+    def persist_reviews(
+        self,
+        *,
+        product: ProductConfig,
+        window: RunWindow,
+        run_id: str,
+        reviews: list[RawReview],
+        source_reports: list[SourceIngestionReport],
+    ) -> IngestionResult:
+        deduped_reviews = self._deduplicate_reviews(reviews)
+        snapshot_path = self._write_snapshot(product.slug, run_id, deduped_reviews)
+        upsert_stats = self.storage.upsert_reviews(product.slug, deduped_reviews)
+        self.storage.replace_run_review_ids(
+            run_id=run_id,
+            review_ids=[review.review_id for review in deduped_reviews],
+        )
+        degraded = any(report.status in {"empty", "error"} for report in source_reports)
+        average_rating = _average_rating(deduped_reviews)
+        if average_rating is not None:
+            record_average_rating(source="combined", value=average_rating)
+
+        return IngestionResult(
+            run_id=run_id,
+            product_slug=product.slug,
+            iso_week=window.iso_week,
+            lookback_weeks=window.lookback_weeks,
+            total_reviews=len(deduped_reviews),
+            snapshot_path=snapshot_path,
+            degraded=degraded,
+            upsert=upsert_stats,
+            sources=source_reports,
+        )
 
     def _fetch_appstore(
         self,

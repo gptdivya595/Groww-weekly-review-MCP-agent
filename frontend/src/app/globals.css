@@ -1,26 +1,26 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f4eee3;
-  --foreground: #142332;
-  --muted: #617182;
-  --line: rgba(20, 35, 50, 0.1);
-  --card: rgba(255, 251, 246, 0.78);
-  --card-strong: rgba(255, 253, 249, 0.94);
-  --accent: #0f766e;
-  --accent-soft: #d7f1ea;
+  --background: #edf5ef;
+  --foreground: #10231d;
+  --muted: #5d6f67;
+  --line: rgba(16, 35, 29, 0.1);
+  --card: rgba(255, 255, 255, 0.8);
+  --card-strong: rgba(255, 255, 255, 0.94);
+  --accent: #059669;
+  --accent-soft: #d1fae5;
   --warning: #b45309;
-  --warning-soft: #fff0d8;
+  --warning-soft: #fff3df;
   --danger: #b42318;
-  --danger-soft: #ffe3df;
-  --shadow: 0 24px 60px rgba(20, 35, 50, 0.1);
+  --danger-soft: #ffe6e2;
+  --shadow: 0 24px 72px rgba(15, 23, 42, 0.08);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: "Space Grotesk", "Arial", sans-serif;
-  --font-mono: "IBM Plex Mono", "Courier New", monospace;
+  --font-sans: var(--font-space-grotesk), "Arial", sans-serif;
+  --font-mono: var(--font-ibm-plex-mono), "Courier New", monospace;
 }
 
 * {
@@ -29,25 +29,38 @@
 
 html {
   background:
-    radial-gradient(circle at top left, rgba(15, 118, 110, 0.14), transparent 28%),
-    radial-gradient(circle at bottom right, rgba(180, 83, 9, 0.12), transparent 30%),
-    linear-gradient(180deg, #faf6ef 0%, #f0e6d6 100%);
+    radial-gradient(circle at top left, rgba(16, 185, 129, 0.16), transparent 28%),
+    radial-gradient(circle at top right, rgba(52, 211, 153, 0.08), transparent 22%),
+    radial-gradient(circle at bottom right, rgba(34, 197, 94, 0.08), transparent 28%),
+    linear-gradient(180deg, #f7fbf8 0%, #edf5ef 100%);
 }
 
 body {
   min-height: 100vh;
   margin: 0;
   color: var(--foreground);
-  font-family: "Space Grotesk", "Arial", sans-serif;
+  font-family: var(--font-space-grotesk), "Arial", sans-serif;
   background-image:
-    linear-gradient(rgba(20, 35, 50, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(20, 35, 50, 0.03) 1px, transparent 1px);
+    linear-gradient(rgba(15, 23, 42, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15, 23, 42, 0.03) 1px, transparent 1px);
   background-position: center;
-  background-size: 32px 32px;
+  background-size: 28px 28px;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 10% 10%, rgba(255, 255, 255, 0.7), transparent 18%),
+    radial-gradient(circle at 85% 15%, rgba(255, 255, 255, 0.35), transparent 12%);
+  opacity: 0.9;
 }
 
 a {
   color: inherit;
+  text-decoration: none;
 }
 
 button {

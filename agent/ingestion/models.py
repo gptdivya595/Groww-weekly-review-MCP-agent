@@ -48,6 +48,7 @@ def stable_body_hash(text: str | None) -> str | None:
 class ReviewSource(str, Enum):
     APPSTORE = "appstore"
     PLAYSTORE = "playstore"
+    CSV_UPLOAD = "csv_upload"
 
 
 class RawReview(BaseModel):
