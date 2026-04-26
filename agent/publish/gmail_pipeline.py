@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, Protocol
 
@@ -62,6 +63,7 @@ def run_gmail_publish_for_run(
     docs_result: DocsPublishResult | None = None,
     docs_client: DocsPublisherClient | None = None,
     gmail_client: GmailPublisherClient | None = None,
+    force_delivery: bool = False,
 ) -> GmailPublishResult:
     service = GmailPublishService(settings=settings, storage=storage)
     return service.run(
@@ -70,6 +72,7 @@ def run_gmail_publish_for_run(
         docs_result=docs_result,
         docs_client=docs_client,
         gmail_client=gmail_client,
+        force_delivery=force_delivery,
     )
 
 
@@ -87,6 +90,7 @@ class GmailPublishService:
         docs_result: DocsPublishResult | None = None,
         docs_client: DocsPublisherClient | None = None,
         gmail_client: GmailPublisherClient | None = None,
+        force_delivery: bool = False,
     ) -> GmailPublishResult:
         try:
             with start_span(
@@ -126,11 +130,19 @@ class GmailPublishService:
                 )
                 subject = artifact.email_teaser.subject
                 idempotency_key = f"{artifact.anchor_key}:gmail"
+                if force_delivery:
+                    idempotency_key = (
+                        f"{artifact.anchor_key}:gmail:manual-"
+                        f"{datetime.now(UTC).strftime('%Y%m%d%H%M%S%f')}"
+                    )
                 publish_mode: Literal["draft", "send"] = (
                     "send" if self.settings.confirm_send else "draft"
                 )
 
                 existing_state = self._load_existing_state(run_record)
+                if force_delivery:
+                    existing_state = _ExistingGmailState.empty()
+
                 if existing_state.message_id:
                     warning: str | None = None
                     if (
@@ -214,6 +226,7 @@ class GmailPublishService:
                             html_body=html_body,
                             idempotency_key=idempotency_key,
                             existing_state=existing_state,
+                            force_delivery=force_delivery,
                         )
                     record_publish_status(
                         target=DeliveryTarget.GMAIL.value,
@@ -249,6 +262,7 @@ class GmailPublishService:
         html_body: str,
         idempotency_key: str,
         existing_state: _ExistingGmailState,
+        force_delivery: bool = False,
     ) -> GmailPublishResult:
         if existing_state.draft_id and existing_state.payload_hash == artifact.email_payload_hash:
             delivery_id = self.storage.upsert_delivery(
@@ -364,6 +378,7 @@ class GmailPublishService:
         html_body: str,
         idempotency_key: str,
         existing_state: _ExistingGmailState,
+        force_delivery: bool = False,
     ) -> GmailPublishResult:
         prepared_draft_id: str
         prepared_thread_id = existing_state.thread_id
@@ -437,10 +452,15 @@ class GmailPublishService:
             payload_hash=artifact.email_payload_hash,
             artifact_path=artifact_path,
             publish_mode="send",
-            publish_action="sent",
+            publish_action="resent" if force_delivery else "sent",
             drafted=bool(send_result.draft_id or prepared_draft_id),
             sent=True,
-            warning=warning,
+            warning=warning
+            or (
+                "Manual Gmail resend completed for this existing report."
+                if force_delivery
+                else None
+            ),
         )
         self.logger.info(
             "gmail_publish_sent",
@@ -517,6 +537,16 @@ class _ExistingGmailState:
         self.thread_id = thread_id
         self.thread_link = thread_link
         self.payload_hash = payload_hash
+
+    @classmethod
+    def empty(cls) -> _ExistingGmailState:
+        return cls(
+            draft_id=None,
+            message_id=None,
+            thread_id=None,
+            thread_link=None,
+            payload_hash=None,
+        )
 
 
 def _validate_recipients(emails: list[str]) -> list[str]:

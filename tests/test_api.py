@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from agent.api import create_app
 from agent.orchestration.models import PipelineRunResult
+from agent.publish.models import GmailPublishResult
 from agent.storage import Storage
 
 
@@ -298,3 +299,115 @@ def test_trigger_run_returns_warning_when_same_week_delivery_is_already_satisfie
     updated_run = storage.get_run("run-existing-groww")
     assert updated_run is not None
     assert updated_run.metadata["warning"] == payload["warning"]
+
+
+def test_resend_gmail_trigger_queues_manual_send_for_existing_run(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    products_path = tmp_path / "products.yaml"
+    products_path.write_text(
+        """
+- slug: groww
+  display_name: Groww
+  app_store_app_id: "1404871703"
+  google_play_package: "com.nextbillion.groww"
+  google_doc_id: doc-groww
+  stakeholder_emails:
+    - ops@example.com
+  default_lookback_weeks: 10
+  country: in
+  lang: en
+  active: true
+        """.strip(),
+        encoding="utf-8",
+    )
+
+    db_path = tmp_path / "pulse.sqlite"
+    artifacts_dir = tmp_path / "artifacts"
+    monkeypatch.setenv("PULSE_DB_PATH", str(db_path))
+    monkeypatch.setenv("PULSE_PRODUCTS_FILE", str(products_path))
+    monkeypatch.setenv("PULSE_RAW_DATA_DIR", str(tmp_path / "raw"))
+    monkeypatch.setenv("PULSE_EMBEDDING_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setenv("PULSE_ARTIFACTS_DIR", str(artifacts_dir))
+    monkeypatch.setenv("PULSE_LOCKS_DIR", str(tmp_path / "locks"))
+    monkeypatch.setenv("GOOGLE_MCP_TOKEN_JSON", "")
+    monkeypatch.setenv("GOOGLE_MCP_TOKEN_B64", "")
+    monkeypatch.setenv("PULSE_CONFIRM_SEND", "true")
+
+    storage = Storage(db_path)
+    storage.initialize()
+    storage.upsert_run(
+        run_id="run-resend-groww",
+        product_slug="groww",
+        iso_week="2026-W17",
+        stage="run",
+        status="completed",
+        lookback_weeks=10,
+        week_start="2026-04-20T00:00:00+00:00",
+        week_end="2026-04-26T23:59:59+00:00",
+        lookback_start="2026-02-09T00:00:00+00:00",
+        metadata={"input_mode": "scrape"},
+    )
+
+    def fake_run_gmail_publish_for_run(**kwargs) -> GmailPublishResult:  # type: ignore[no-untyped-def]
+        assert kwargs["run_record"].run_id == "run-resend-groww"
+        assert kwargs["force_delivery"] is True
+        delivery_id = kwargs["storage"].upsert_delivery(
+            run_id="run-resend-groww",
+            target="gmail",
+            status="sent",
+            external_id="msg-resend",
+            external_link="https://mail.google.com/mail/u/0/#inbox/thread-resend",
+            payload_hash="payload-resend",
+        )
+        return GmailPublishResult(
+            run_id="run-resend-groww",
+            product_slug="groww",
+            iso_week="2026-W17",
+            delivery_id=delivery_id,
+            docs_deep_link="https://docs.google.com/document/d/doc-groww/edit",
+            draft_id="draft-resend",
+            message_id="msg-resend",
+            thread_id="thread-resend",
+            thread_link="https://mail.google.com/mail/u/0/#inbox/thread-resend",
+            payload_hash="payload-resend",
+            artifact_path=artifacts_dir / "render.json",
+            publish_mode="send",
+            publish_action="resent",
+            drafted=True,
+            sent=True,
+            warning="Manual Gmail resend completed for this existing report.",
+        )
+
+    monkeypatch.setattr(
+        "agent.api.run_gmail_publish_for_run",
+        fake_run_gmail_publish_for_run,
+    )
+
+    app = create_app()
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/triggers/resend-gmail",
+            json={"run_id": "run-resend-groww"},
+        )
+        assert response.status_code == 202, response.text
+        payload = response.json()
+        assert payload["kind"] == "gmail-resend"
+        assert payload["run_id"] == "run-resend-groww"
+
+        import time
+
+        job = payload
+        for _ in range(25):
+            jobs = client.get("/api/jobs").json()
+            job = next(item for item in jobs if item["job_id"] == payload["job_id"])
+            if job["status"] == "completed":
+                break
+            time.sleep(0.1)
+
+    assert job["status"] == "completed"
+    assert job["warning"] == "Manual Gmail resend completed for this existing report."
+    delivery = storage.get_delivery("run-resend-groww", "gmail")
+    assert delivery is not None
+    assert delivery.external_id == "msg-resend"

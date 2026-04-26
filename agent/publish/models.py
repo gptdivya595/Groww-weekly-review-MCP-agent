@@ -56,6 +56,7 @@ class GmailPublishResult(BaseModel):
         "draft_updated",
         "draft_reused",
         "sent",
+        "resent",
         "already_sent",
     ]
     drafted: bool

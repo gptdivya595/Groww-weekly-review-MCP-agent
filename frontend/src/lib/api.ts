@@ -185,6 +185,10 @@ type UploadReviewCsvRequest = {
   target?: "docs" | "gmail" | "all";
 };
 
+type ResendGmailRequest = {
+  run_id: string;
+};
+
 const API_BASE_URL = (
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
 ).replace(/\/$/, "");
@@ -243,6 +247,15 @@ export async function uploadReviewCsv(
   payload: UploadReviewCsvRequest,
 ): Promise<JobSnapshot> {
   return request<JobSnapshot>("/api/triggers/upload-csv", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function resendGmail(
+  payload: ResendGmailRequest,
+): Promise<JobSnapshot> {
+  return request<JobSnapshot>("/api/triggers/resend-gmail", {
     method: "POST",
     body: JSON.stringify(payload),
   });

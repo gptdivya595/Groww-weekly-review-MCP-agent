@@ -208,8 +208,9 @@ class FakeGmailClient:
                 "idempotency_key": idempotency_key,
             }
         )
+        draft_number = len(self.create_calls)
         return GmailDraftResult(
-            draft_id="draft-1",
+            draft_id=f"draft-{draft_number}",
             thread_id="thread-1",
             thread_link="https://mail.google.com/mail/u/0/#inbox/thread-1",
         )
@@ -244,8 +245,9 @@ class FakeGmailClient:
 
     def send_draft(self, *, draft_id: str) -> GmailSendResult:
         self.send_calls.append({"draft_id": draft_id})
+        message_number = len(self.send_calls)
         return GmailSendResult(
-            message_id="msg-1",
+            message_id=f"msg-{message_number}",
             draft_id=draft_id,
             thread_id="thread-1",
             thread_link="https://mail.google.com/mail/u/0/#inbox/thread-1",
@@ -397,6 +399,42 @@ def test_gmail_publish_sends_once_when_confirm_send_enabled(tmp_path: Path) -> N
     assert delivery is not None
     assert delivery.status == "sent"
     assert delivery.external_id == "msg-1"
+
+
+def test_gmail_publish_force_delivery_sends_again_for_same_run(tmp_path: Path) -> None:
+    settings, storage, product, run_record = _prepare_rendered_run(tmp_path, confirm_send=True)
+    docs_client = FakeDocsClient()
+    gmail_client = FakeGmailClient()
+
+    first = run_gmail_publish_for_run(
+        settings=settings,
+        storage=storage,
+        run_record=run_record,
+        product=product,
+        docs_client=docs_client,
+        gmail_client=gmail_client,
+    )
+    second = run_gmail_publish_for_run(
+        settings=settings,
+        storage=storage,
+        run_record=storage.get_run(run_record.run_id) or run_record,
+        product=product,
+        docs_client=docs_client,
+        gmail_client=gmail_client,
+        force_delivery=True,
+    )
+
+    delivery = storage.get_delivery(run_record.run_id, "gmail")
+
+    assert first.publish_action == "sent"
+    assert second.publish_action == "resent"
+    assert second.message_id == "msg-2"
+    assert second.warning == "Manual Gmail resend completed for this existing report."
+    assert gmail_client.create_calls and len(gmail_client.create_calls) == 2
+    assert gmail_client.send_calls == [{"draft_id": "draft-1"}, {"draft_id": "draft-2"}]
+    assert delivery is not None
+    assert delivery.status == "sent"
+    assert delivery.external_id == "msg-2"
 
 
 def test_gmail_mcp_client_emits_expected_json_rpc_calls() -> None:

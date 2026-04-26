@@ -15,6 +15,7 @@ import {
   apiBaseUrl,
   fetchOverview,
   fetchRunDetail,
+  resendGmail,
   triggerRun,
   uploadReviewCsv,
 } from "@/lib/api";
@@ -868,6 +869,30 @@ export function DashboardShell() {
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unable to queue the weekly pulse.";
+      setErrorMessage(message);
+    } finally {
+      setActiveActionKey(null);
+    }
+  }
+
+  async function handleResendGmail(run: RunSummary) {
+    const actionKey = `resend:${run.run_id}`;
+    try {
+      setActiveActionKey(actionKey);
+      const job = await resendGmail({ run_id: run.run_id });
+      setFlashMessage(
+        jobFlashMessage(
+          job,
+          `Queued a Gmail resend for ${humanizeSlug(run.product_slug)} ${run.iso_week} as job ${job.job_id.slice(0, 8)}.`,
+        ),
+      );
+      if (job.run_id) {
+        selectRun(job.run_id);
+      }
+      await refreshOverviewNow();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to queue the Gmail resend.";
       setErrorMessage(message);
     } finally {
       setActiveActionKey(null);
@@ -1739,7 +1764,11 @@ export function DashboardShell() {
               subtitle="The right side shows the live run detail response from the backend for the selected Groww run."
             >
               {runDetail ? (
-                <RunDetailPanel detail={runDetail} />
+                <RunDetailPanel
+                  detail={runDetail}
+                  onResendGmail={handleResendGmail}
+                  resending={activeActionKey === `resend:${runDetail.run.run_id}`}
+                />
               ) : runDetailStatus === "loading" ? (
                 <Placeholder copy="Loading run detail..." />
               ) : latestVisibleRun ? (
@@ -2733,22 +2762,44 @@ function JobList({ jobs }: { jobs: JobSnapshot[] }) {
   );
 }
 
-function RunDetailPanel({ detail }: { detail: RunDetail }) {
+function RunDetailPanel({
+  detail,
+  onResendGmail,
+  resending,
+}: {
+  detail: RunDetail;
+  onResendGmail: (run: RunSummary) => void;
+  resending: boolean;
+}) {
   const auditPreview = JSON.stringify(detail.audit, null, 2);
+  const canResendGmail = detail.run.gmail_status === "sent";
 
   return (
     <div className="space-y-4">
       <div className="rounded-[1.5rem] border border-emerald-950/8 bg-white/82 p-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <StatusBadge value={detail.run.status} />
-          <StatusBadge label="Stage" value={detail.run.stage} />
-          <StatusBadge label="Input" value={inputModeLabel(detail.run.input_mode)} />
-          {detail.run.docs_status ? (
-            <StatusBadge label="Docs" value={detail.run.docs_status} />
-          ) : null}
-          {detail.run.gmail_status ? (
-            <StatusBadge label="Gmail" value={detail.run.gmail_status} />
-          ) : null}
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge value={detail.run.status} />
+            <StatusBadge label="Stage" value={detail.run.stage} />
+            <StatusBadge label="Input" value={inputModeLabel(detail.run.input_mode)} />
+            {detail.run.docs_status ? (
+              <StatusBadge label="Docs" value={detail.run.docs_status} />
+            ) : null}
+            {detail.run.gmail_status ? (
+              <StatusBadge label="Gmail" value={detail.run.gmail_status} />
+            ) : null}
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              onResendGmail(detail.run);
+            }}
+            disabled={!canResendGmail || resending}
+            className="inline-flex items-center gap-2 rounded-2xl border border-emerald-950/10 bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
+          >
+            <MiniIcon name="delivery" />
+            {resending ? "Resending..." : "Send Gmail Again"}
+          </button>
         </div>
         <div className="mt-4 space-y-2 text-sm leading-6 text-[var(--muted)]">
           <p>

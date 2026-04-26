@@ -30,6 +30,7 @@ from agent.orchestration.pipeline import (
     run_weekly_for_products,
     target_already_satisfied,
 )
+from agent.publish.gmail_pipeline import run_gmail_publish_for_run
 from agent.pulse_types import (
     DeliveryTarget,
     ProductConfig,
@@ -207,6 +208,10 @@ class TriggerCsvUploadRequest(BaseModel):
     iso_week: str | None = None
     weeks: int | None = Field(default=None, ge=1)
     target: DeliveryTarget = DeliveryTarget.ALL
+
+
+class TriggerGmailResendRequest(BaseModel):
+    run_id: str
 
 
 class ApiJobItem(BaseModel):
@@ -490,6 +495,33 @@ class ApiRuntime:
         )
         return self._get_job(job.job_id)
 
+    def submit_gmail_resend(self, request: TriggerGmailResendRequest) -> ApiJobSnapshot:
+        run_record = self.storage.get_run(request.run_id)
+        if run_record is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Unknown run id: {request.run_id}",
+            )
+
+        job = ApiJobSnapshot(
+            job_id=uuid4().hex,
+            kind="gmail-resend",
+            status="queued",
+            submitted_at=datetime.now(UTC),
+            iso_week=run_record.iso_week,
+            product_slug=run_record.product_slug,
+            target=DeliveryTarget.GMAIL.value,
+            run_id=run_record.run_id,
+            summary_path=(
+                str(summary_path)
+                if (summary_path := self._summary_path(run_record)) is not None
+                else None
+            ),
+        )
+        self._store_job(job)
+        self.executor.submit(self._execute_gmail_resend, job.job_id, run_record.run_id)
+        return self._get_job(job.job_id)
+
     def build_overview(self, *, limit: int = 20) -> ApiOverviewResponse:
         products = self.refresh_products()
         run_records = self.storage.list_runs(limit=max(200, limit, len(products) * 20))
@@ -712,6 +744,69 @@ class ApiRuntime:
                 job_id,
                 status="failed",
                 completed_at=datetime.now(UTC),
+                error=str(exc),
+            )
+
+    def _execute_gmail_resend(self, job_id: str, run_id: str) -> None:
+        self._update_job(job_id, status="running", started_at=datetime.now(UTC))
+        try:
+            run_record = self.storage.get_run(run_id)
+            if run_record is None:
+                raise KeyError(f"Unknown run id: {run_id}")
+
+            product = get_product_by_slug(run_record.product_slug, self.settings)
+            result = run_gmail_publish_for_run(
+                settings=self.settings,
+                storage=self.storage,
+                run_record=run_record,
+                product=product,
+                force_delivery=True,
+            )
+            refreshed_run = self.storage.get_run(run_id) or run_record
+            self.storage.update_run_status(
+                run_id,
+                status="completed",
+                stage=Stage.RUN.value,
+                metadata=result.to_metadata()
+                | {
+                    "orchestration_target": DeliveryTarget.GMAIL.value,
+                    "manual_gmail_resend": True,
+                },
+                completed=True,
+            )
+            self._update_job(
+                job_id,
+                status="completed",
+                completed_at=datetime.now(UTC),
+                run_id=result.run_id,
+                summary_path=(
+                    str(summary_path)
+                    if (summary_path := self._summary_path(refreshed_run)) is not None
+                    else None
+                ),
+                warning=(
+                    result.warning
+                    or f"Manual Gmail resend completed with message id {result.message_id}."
+                ),
+            )
+        except Exception as exc:
+            run_record = self.storage.get_run(run_id)
+            self.logger.exception(
+                "api_gmail_resend_failed",
+                job_id=job_id,
+                run_id=run_id,
+                error=str(exc),
+            )
+            self._update_job(
+                job_id,
+                status="failed",
+                completed_at=datetime.now(UTC),
+                run_id=run_id,
+                summary_path=(
+                    str(self._summary_path(run_record))
+                    if run_record is not None and self._summary_path(run_record) is not None
+                    else None
+                ),
                 error=str(exc),
             )
 
@@ -1935,6 +2030,17 @@ def create_app() -> FastAPI:
         payload: TriggerCsvUploadRequest,
     ) -> ApiJobSnapshot:
         return _runtime(request).submit_csv_upload(payload)
+
+    @app.post(
+        "/api/triggers/resend-gmail",
+        response_model=ApiJobSnapshot,
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    def trigger_gmail_resend(
+        request: Request,
+        payload: TriggerGmailResendRequest,
+    ) -> ApiJobSnapshot:
+        return _runtime(request).submit_gmail_resend(payload)
 
     return app
 
